@@ -1,0 +1,2210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>genremap</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+  <style>
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body, html {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #111111;
+  font-family: Consolas, Monaco, "Courier New", Courier, monospace;
+  color: #cccccc;
+}
+
+:root {
+  --accent-color: #33ccff; /* Default fallback */
+}
+
+.rainbow-accent {
+  color: var(--accent-color) !important;
+  background: none !important;
+  -webkit-background-clip: initial !important;
+  -webkit-text-fill-color: initial !important;
+}
+
+.rainbow-border {
+  border-color: var(--accent-color) !important;
+  border-image: none !important;
+}
+
+.pop-bar-fill {
+  background-color: var(--accent-color) !important;
+}
+
+#canvas-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#ui-layer {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.glass-panel {
+  background: #1a1a1a;
+  border: 1px solid #444444;
+  border-radius: 0px;
+  padding: 8px 10px;
+  pointer-events: auto;
+  color: #cccccc;
+}
+
+.search-container {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+#search-box {
+  width: 160px;
+  padding: 6px 8px;
+  background: #000000;
+  border: 1px solid #666666;
+  border-radius: 0px;
+  color: #ffffff;
+  font-size: 12px;
+  font-family: Consolas, Monaco, monospace;
+  outline: none;
+}
+
+.search-dropdown-select {
+  padding: 6px 4px;
+  background: #000000;
+  border: 1px solid #666666;
+  color: #ffffff;
+  font-size: 11px;
+  font-family: Consolas, Monaco, monospace;
+  outline: none;
+  cursor: pointer;
+}
+
+.search-nav-btn {
+  background: #000000;
+  border: 1px solid #666666;
+  color: #ffffff;
+  font-size: 11px;
+  font-family: Consolas, Monaco, monospace;
+  width: 24px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  outline: none;
+}
+
+.search-nav-btn:hover, .search-dropdown-select:hover, #search-box:focus, .search-dropdown-select:focus {
+  border-color: var(--accent-color);
+}
+
+#search-counter {
+  font-size: 10px;
+  color: #888888;
+  min-width: 32px;
+  text-align: center;
+}
+
+#search-box::placeholder {
+  color: #666666;
+}
+
+.stats {
+  font-size: 11px;
+  color: #888888;
+  display: flex;
+  gap: 12px;
+}
+
+.stats span {
+  color: var(--accent-color);
+  background: none;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: initial;
+  font-weight: bold;
+}
+
+#mobile-menu-btn {
+  display: none;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 40;
+  background: #1a1a1a;
+  border: 1px solid #555555;
+  border-radius: 0px;
+  width: 36px;
+  height: 36px;
+  color: var(--accent-color);
+  font-size: 16px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
+
+#pathfinder-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 15;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pathfinder-title {
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  color: var(--accent-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #333333;
+  padding-bottom: 4px;
+}
+
+.path-input-group {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.path-input-group label {
+  font-size: 10px;
+  color: #888888;
+  text-transform: uppercase;
+}
+
+.path-input {
+  width: 100%;
+  padding: 5px 8px;
+  background: #000000;
+  border: 1px solid #666666;
+  border-radius: 0px;
+  color: #ffffff;
+  font-size: 11px;
+  font-family: Consolas, Monaco, monospace;
+  outline: none;
+}
+
+.path-input:focus {
+  border-color: var(--accent-color);
+}
+
+.search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 150px;
+  overflow-y: auto;
+  background: #1a1a1a;
+  border: 1px solid #666666;
+  border-radius: 0px;
+  z-index: 20;
+  display: none;
+}
+
+.search-dropdown-item {
+  padding: 6px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  border-bottom: 1px solid #333333;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.search-dropdown-item:hover {
+  background: var(--accent-color);
+  color: #000000;
+}
+
+.search-dropdown-item .genre-tag {
+  font-size: 9px;
+  background: #333333;
+  color: #ccc;
+  padding: 1px 4px;
+}
+
+#path-results-box {
+  margin-top: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+  font-size: 11px;
+  color: #cccccc;
+  display: none;
+  background: #000000;
+  padding: 6px;
+  border: 1px solid #333333;
+}
+
+.path-step-item {
+  padding: 3px 0;
+  border-bottom: 1px dotted #333333;
+  display: flex;
+  justify-content: space-between;
+}
+
+#detail-card {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 10;
+  width: 300px;
+  display: none;
+}
+
+#detail-card h2 {
+  font-size: 16px;
+  font-weight: bold;
+  color: #ffffff;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  border-bottom: 1px solid #444444;
+  padding-bottom: 3px;
+}
+
+#detail-card p {
+  font-size: 11px;
+  color: #aaaaaa;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+}
+
+.pop-bar-container {
+  width: 100%;
+  height: 6px;
+  background: #000000;
+  border: 1px solid #555555;
+  border-radius: 0px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.pop-bar-fill {
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 0px;
+}
+
+.glass-btn {
+  width: 100%;
+  padding: 6px 8px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  background: #333333;
+  border: 1px solid #777777;
+  border-radius: 0px;
+  color: var(--accent-color);
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: initial;
+  font-size: 11px;
+  font-weight: bold;
+  font-family: Consolas, Monaco, monospace;
+  cursor: pointer;
+  outline: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+}
+
+.glass-btn:hover {
+  background: var(--accent-color);
+  color: #000000;
+  -webkit-text-fill-color: #000000;
+  border-color: #ffffff;
+}
+
+.glass-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+  background: #222222;
+  border-color: #444444;
+  color: #666666;
+  -webkit-text-fill-color: #666666;
+}
+
+.glass-btn.active {
+  background: var(--accent-color);
+  color: #000000;
+  -webkit-text-fill-color: #000000;
+  border-color: #ffffff;
+}
+
+#connections-list-wrapper {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid #444444;
+}
+
+.conn-header {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #777777;
+  margin-bottom: 4px;
+}
+
+#connections-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-height: 70px;
+  overflow-y: auto;
+}
+
+.chip {
+  font-size: 9px;
+  padding: 2px 5px;
+  border-radius: 0px;
+  background: #262626;
+  border: 1px solid #444444;
+  color: #cccccc;
+  white-space: nowrap;
+}
+
+#spotify-player-wrapper {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 280px;
+  height: 80px;
+  z-index: 15;
+  background: #1a1a1a;
+  border: 1px solid #444444;
+}
+
+#artist-overlay-modal {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 30;
+  width: 400px;
+  max-width: 90vw;
+  max-height: 70vh;
+  display: none;
+  flex-direction: column;
+  border: 1px solid #666666;
+}
+
+#artist-overlay-modal .modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #444444;
+  margin-bottom: 8px;
+}
+
+#artist-overlay-modal .close-btn {
+  background: #333333;
+  border: 1px solid #777777;
+  color: #ffffff;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 1px 5px;
+}
+
+#artist-overlay-modal .close-btn:hover {
+  background: #ff3333;
+}
+
+.artist-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 6px;
+  overflow-y: auto;
+  max-height: 35vh;
+  padding-right: 2px;
+}
+
+.artist-card {
+  background: #000000;
+  border: 1px solid #444444;
+  border-radius: 0px;
+  padding: 8px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.artist-card:hover {
+  background: var(--accent-color);
+  border-color: #ffffff;
+}
+
+.artist-card:hover span {
+  color: #000000;
+  -webkit-text-fill-color: #000000;
+}
+
+.artist-card span {
+  display: block;
+  font-size: 10px;
+  color: #cccccc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#loader {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: #111111;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  transition: opacity 0.3s ease;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid #333333;
+  border-top-color: #33ccff;
+  border-radius: 0px;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 12px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  #mobile-menu-btn {
+    display: flex;
+  }
+
+  #ui-layer {
+    top: 10px;
+    left: 10px;
+    right: 60px;
+  }
+
+  .search-container {
+    flex-wrap: wrap;
+  }
+
+  #search-box {
+    width: 100%;
+  }
+
+  .stats {
+    display: none;
+  }
+
+  #pathfinder-panel {
+    top: 60px;
+    right: 10px;
+    left: 10px;
+    width: auto;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    display: none;
+  }
+
+  #pathfinder-panel.mobile-visible {
+    display: flex;
+  }
+
+  #detail-card {
+    left: 10px;
+    right: 10px;
+    bottom: 100px;
+    width: auto;
+    max-height: 45vh;
+    overflow-y: auto;
+  }
+
+  #spotify-player-wrapper {
+    left: 0px;
+    right: 0px;
+    bottom: 0px;
+    width: auto;
+  }
+
+  .artist-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+  </style>
+</head>
+<body>
+
+<div id="loader">
+    <div class="spinner"></div>
+    <div id="loader-text" style="color: #cccccc; font-size: 12px; letter-spacing: 1px;">STREAMING 120MB JSON STREAM...</div>
+  </div>
+
+  <div id="canvas-container">
+    <canvas id="graph-canvas"></canvas>
+  </div>
+
+  <button id="mobile-menu-btn" title="Toggle Menu">[+]</button>
+
+  <div id="ui-layer">
+    <div class="glass-panel">
+      <div class="search-container">
+        <input type="text" id="search-box" placeholder="search genre or artist..." />
+        <select id="search-category-dropdown" class="search-dropdown-select" title="Category Filter">
+          <option value="all">All</option>
+          <option value="genres">Genres Only</option>
+          <option value="artists">Artists Only</option>
+        </select>
+        <select id="search-match-dropdown" class="search-dropdown-select" title="Match Type">
+          <option value="partial" selected>Partial</option>
+          <option value="whole">Whole</option>
+        </select>
+        <button id="search-prev-btn" class="search-nav-btn" title="Previous Hit">&lt;</button>
+        <span id="search-counter">0/0</span>
+        <button id="search-next-btn" class="search-nav-btn" title="Next Hit">&gt;</button>
+      </div>
+    </div>
+    <div class="glass-panel stats">
+      <div>Nodes: <span id="node-count">0</span></div>
+      <div>FPS: <span id="fps-count">60</span></div>
+    </div>
+  </div>
+
+  <div id="pathfinder-panel" class="glass-panel">
+    <div class="pathfinder-title">
+      <span>Artist Pathfinder</span>
+      <span id="path-status" style="font-size: 9px; color: #888;">Ready</span>
+    </div>
+    <div class="path-input-group">
+      <label>From Artist Name</label>
+      <input type="text" id="path-from-input" class="path-input" placeholder="type artist name..." autocomplete="off" />
+      <div id="from-dropdown" class="search-dropdown"></div>
+    </div>
+    <div class="path-input-group">
+      <label>To Artist Name</label>
+      <input type="text" id="path-to-input" class="path-input" placeholder="type artist name..." autocomplete="off" />
+      <div id="to-dropdown" class="search-dropdown"></div>
+    </div>
+    <button id="find-path-btn" class="glass-btn" style="margin-top: 4px;">Find Shortest Path</button>
+    <div style="display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 10px;">
+      <input type="checkbox" id="toggle-bridge-line" checked style="cursor: pointer;" />
+      <label for="toggle-bridge-line" style="cursor: pointer; color: #aaa; text-transform: none;">Show Bridge Line</label>
+    </div>
+    <div id="path-results-box"></div>
+  </div>
+
+  <div id="detail-card" class="glass-panel">
+    <h2 id="detail-title" class="rainbow-accent">Genre Name</h2>
+    <p>Spatial Angle <strong id="detail-angle" class="rainbow-accent">0°</strong></p>
+    <p>Popularity <strong id="detail-pop-pct" class="rainbow-accent">0%</strong></p>
+    <div class="pop-bar-container">
+      <div id="pop-bar-fill" class="pop-bar-fill"></div>
+    </div>
+    <p><span id="label-artist-type">Sample Artist</span> <strong id="detail-artist" style="color: #ffffff;">None</strong></p>
+    <p><span id="label-links-type">Direct Connections</span> <strong id="detail-links" class="rainbow-accent">0</strong></p>
+    
+    <button id="toggle-artists-btn" class="glass-btn">
+      EXPLORE ARTISTS (<span id="artist-count">0</span>)
+    </button>
+
+    <div id="connections-list-wrapper">
+      <div class="conn-header" id="conn-header-label">Connected Network via Neighbors</div>
+      <div id="connections-chips"></div>
+    </div>
+  </div>
+
+  <div id="artist-overlay-modal" class="glass-panel">
+    <div class="modal-header">
+      <h3 id="overlay-genre-title" class="rainbow-accent" style="font-size: 12px;">Genre Artists</h3>
+      <button class="close-btn" id="close-overlay-btn">[X]</button>
+    </div>
+    <div id="artist-grid" class="artist-grid"></div>
+  </div>
+  
+  <div id="spotify-embed-container"></div>
+
+<script>
+    const CONFIG = {
+      minNodeRadius: 2.5,
+      maxNodeRadius: 8,
+      hoverNodeRadius: 7,
+      defaultTrackId: "435axwaVYEUBYgYgpt28tv",
+      genreToArtistThreshold: 14.0,
+      artistToGenreThreshold: 0.2724
+    };
+
+    let rawGenreData = { nodes: [], links: [] };
+    let activeDataMode = "genres";
+
+    let activeNodes = [];
+    let activeLinks = [];
+    
+    let genreNodeMap = new Map();
+    let genreNeighborsMap = new Map();
+    let genreQuadtree = null;
+
+    let artistNodeMap = new Map();
+    let artistNeighborsMap = new Map();
+    let artistQuadtree = null;
+
+    let computedArtistNodes = [];
+    let computedArtistLinks = [];
+    let artistGenreHeaders = [];
+    let genreToArtistsMap = new Map();
+    let artistConnectionAdjacencyMap = new Map();
+
+    let genreSearchIndex = [];
+    let artistSearchIndex = [];
+
+    let selectedFromArtist = null;
+    let selectedToArtist = null;
+    let currentPathLinks = [];
+    let currentFoundPathArtists = [];
+    let isAnimatingJourney = false;
+
+    let canvas, ctx, width, height, bgCanvas, bgCtx;
+    
+    let transform = d3.zoomIdentity;
+    let targetTransform = d3.zoomIdentity;
+    let zoomBehavior = null;
+
+    let hoverNode = null;
+    let selectedNode = null;
+    let searchQuery = "";
+    let searchCategoryMode = "all";
+    let searchMatchMode = "partial";
+    let matchedSearchNodes = [];
+    let currentSearchHitIndex = -1;
+
+    let lastSelectedNodes = { genres: null, artists: null };
+
+    let activeDirectNeighbors = new Set();
+    let activeSecondaryNeighbors = new Set();
+    let currentClosestArtistsLinks = [];
+
+    let lastCalledTime = performance.now();
+    let fps = 60;
+    
+    let renderRequested = false;
+    let isTransitioningMode = false;
+
+    let embedController = null;
+    let currentTrackId = null;
+    let isPlaying = false;
+
+    window.onSpotifyIframeApiReady = (IFrameAPI) => {
+      const element = document.getElementById('spotify-embed-container');
+      const options = {
+        width: '100%',
+        height: '152',
+        uri: `spotify:track:${CONFIG.defaultTrackId}`
+      };
+      const callback = (controller) => {
+        embedController = controller;
+        controller.addListener('playback_update', e => {
+          isPlaying = !e.data.isPaused;
+        });
+      };
+      IFrameAPI.createController(element, options, callback);
+    };
+
+	function updateAccentColor(color) {
+      if (!color) return;
+      document.documentElement.style.setProperty('--accent-color', color);
+      
+      const popBarFill = document.getElementById("pop-bar-fill");
+      if (popBarFill) {
+        popBarFill.style.backgroundColor = color;
+      }
+      
+      const overlayTitle = document.getElementById("overlay-genre-title");
+      if (overlayTitle) {
+        overlayTitle.style.color = color;
+      }
+    }
+	
+    function playTrack(trackId, forcePlay = false) {
+      const id = trackId || CONFIG.defaultTrackId;
+      if (!embedController) return;
+
+      const trackUri = `spotify:track:${id}`;
+
+      if (currentTrackId === id && isPlaying && !forcePlay) {
+        embedController.pause();
+        isPlaying = false;
+      } else {
+        embedController.loadUri(trackUri);
+        embedController.play();
+        currentTrackId = id;
+        isPlaying = true;
+      }
+    }
+
+    function getNodeRadius(node) {
+      if (node._radius !== undefined) return node._radius;
+      const pop = node.popularity !== undefined ? node.popularity : 0;
+      node._radius = CONFIG.minNodeRadius + pop * (CONFIG.maxNodeRadius - CONFIG.minNodeRadius);
+      return node._radius;
+    }
+
+    function renderOffscreenBackground(fieldRadius) {
+      if (!bgCanvas) {
+        bgCanvas = document.createElement("canvas");
+        bgCtx = bgCanvas.getContext("2d");
+      }
+      
+      const size = Math.ceil(fieldRadius * 2);
+      bgCanvas.width = size;
+      bgCanvas.height = size;
+
+      bgCtx.save();
+      bgCtx.translate(fieldRadius, fieldRadius);
+
+      const conicGrad = bgCtx.createConicGradient(Math.PI, 0, 0);
+      for (let deg = 0; deg <= 360; deg += 20) {
+        conicGrad.addColorStop(deg / 360, `hsl(${deg}, 90%, 55%)`);
+      }
+
+      bgCtx.fillStyle = conicGrad;
+      bgCtx.beginPath();
+      bgCtx.arc(0, 0, fieldRadius, 0, 2 * Math.PI);
+      bgCtx.fill();
+
+      bgCtx.globalCompositeOperation = "source-over";
+      
+      const centerGrad = bgCtx.createRadialGradient(0, 0, 0, 0, 0, fieldRadius);
+      centerGrad.addColorStop(0.0, "rgba(255, 255, 255, 0.75)");
+      centerGrad.addColorStop(0.1, "rgba(255, 255, 255, 0.75)");
+      centerGrad.addColorStop(0.3, "rgba(255, 255, 255, 0.375)");
+      centerGrad.addColorStop(0.8, "rgba(17, 17, 17, 0)");
+      centerGrad.addColorStop(1.0, "rgba(17, 17, 17, 1)");
+
+      bgCtx.fillStyle = centerGrad;
+      bgCtx.beginPath();
+      bgCtx.arc(0, 0, fieldRadius, 0, 2 * Math.PI);
+      bgCtx.fill();
+
+      bgCtx.restore();
+    }
+
+    function sampleNodeColor(node) {
+      if (!bgCanvas || !bgCtx) return "#ffffff";
+      const fieldRadius = 1500;
+      const scale = node._type === "artist" ? 16 : 1;
+      const x = isNaN(node.x) ? 0 : node.x / scale;
+      const y = isNaN(node.y) ? 0 : node.y / scale;
+
+      const px = Math.round(x + fieldRadius);
+      const py = Math.round(y + fieldRadius);
+
+      if (px < 0 || px >= bgCanvas.width || py < 0 || py >= bgCanvas.height) {
+        return "rgb(17, 17, 17)";
+      }
+
+      const pixel = bgCtx.getImageData(px, py, 1, 1).data;
+      return `rgb(${pixel[0]}, ${pixel[1]}, ${pixel[2]})`;
+    }
+
+    function getMapBounds() {
+      let maxRadius = 1500 * (activeDataMode === "artists" ? 16 : 1);
+      
+      for (let i = 0; i < activeNodes.length; i++) {
+        const node = activeNodes[i];
+        if (isNaN(node.x) || isNaN(node.y)) continue;
+        const dist = Math.sqrt(node.x * node.x + node.y * node.y);
+        if (dist > maxRadius) maxRadius = dist;
+      }
+
+      const boundedRadius = maxRadius * 1.10;
+      return {
+        minX: -boundedRadius,
+        maxX: boundedRadius,
+        minY: -boundedRadius,
+        maxY: boundedRadius
+      };
+    }
+
+    function clampTransform(t) {
+      if (!width || !height || isNaN(t.k) || isNaN(t.x) || isNaN(t.y)) return d3.zoomIdentity;
+
+      const bounds = getMapBounds();
+      const k = Math.max(0.02, Math.min(120, t.k));
+
+      let clampedX = Math.min(Math.max(t.x, width - bounds.maxX * k), -bounds.minX * k);
+      let clampedY = Math.min(Math.max(t.y, height - bounds.maxY * k), -bounds.minY * k);
+
+      if (isNaN(clampedX)) clampedX = width / 2;
+      if (isNaN(clampedY)) clampedY = height / 2;
+
+      const mapWidth = (bounds.maxX - bounds.minX) * k;
+      const mapHeight = (bounds.maxY - bounds.minY) * k;
+
+      if (mapWidth < width) {
+        clampedX = width / 2 - ((bounds.minX + bounds.maxX) / 2) * k;
+      }
+      if (mapHeight < height) {
+        clampedY = height / 2 - ((bounds.minY + bounds.maxY) / 2) * k;
+      }
+
+      return d3.zoomIdentity.translate(clampedX, clampedY).scale(k);
+    }
+
+    async function init() {
+      canvas = document.getElementById("graph-canvas");
+      ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+
+      resizeCanvas();
+      window.addEventListener("resize", resizeCanvas);
+
+      const loaderText = document.getElementById("loader-text");
+
+	try {
+        if (loaderText) loaderText.innerText = "DOWNLOADING & PARSING JSON...";
+        
+        const response = await fetch("everynoise_cache.json.gz");
+        
+        if (!response.ok) {
+          throw new Error("Network response was not ok.");
+        }
+
+        if (loaderText) loaderText.innerText = "DECOMPRESSING GZIP...";
+        
+        const ds = new DecompressionStream("gzip");
+        const decompressedStream = response.body.pipeThrough(ds);
+        
+        if (loaderText) loaderText.innerText = "PROCESSING GRAPH DATA...";
+        
+        rawGenreData = await new Response(decompressedStream).json();
+
+        renderOffscreenBackground(1500);
+
+        processGenreData();
+        buildArtistPositions();
+        prebuildModeCaches();
+        setupPathfinderSearch();
+        setupMobileUI();
+
+        switchMode("genres");
+        setupInteractions();
+
+        const loader = document.getElementById("loader");
+        if (loader) {
+          loader.style.opacity = "0";
+          setTimeout(() => loader.style.display = "none", 300);
+        }
+
+        requestRender();
+
+      } catch (err) {
+        console.error("Failed to load graph data:", err);
+        if (loaderText) loaderText.innerText = "ERROR LOADING DATA.";
+      }
+    }
+
+    function setupMobileUI() {
+      const menuBtn = document.getElementById("mobile-menu-btn");
+      const pathfinder = document.getElementById("pathfinder-panel");
+      if (menuBtn && pathfinder) {
+        menuBtn.addEventListener("click", () => {
+          pathfinder.classList.toggle("mobile-visible");
+        });
+      }
+    }
+
+    function processGenreData() {
+      const nodes = rawGenreData.nodes;
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i];
+        node.x = isNaN(node.x ?? node.fx) ? 0 : (node.x ?? node.fx ?? 0);
+        node.y = isNaN(node.y ?? node.fy) ? 0 : (node.y ?? node.fy ?? 0);
+        
+        node._color = sampleNodeColor(node);
+        node._radius = getNodeRadius(node);
+        node._type = "genre";
+      }
+    }
+
+    function buildArtistPositions() {
+      const artistMap = new Map();
+      genreToArtistsMap.clear();
+
+      artistGenreHeaders = new Array(rawGenreData.nodes.length);
+      for (let i = 0; i < rawGenreData.nodes.length; i++) {
+        const genre = rawGenreData.nodes[i];
+        artistGenreHeaders[i] = {
+          id: genre.id,
+          x: genre.x * 16,
+          y: genre.y * 16,
+          popularity: genre.popularity || 0.5,
+          color: genre._color || "#ffffff"
+        };
+      }
+
+      for (let i = 0; i < rawGenreData.nodes.length; i++) {
+        const genre = rawGenreData.nodes[i];
+        if (!Array.isArray(genre.artists)) continue;
+
+        for (let j = 0; j < genre.artists.length; j++) {
+          const art = genre.artists[j];
+          const rawNameStr = (art.name || art.id || art.artist_id || "").toString().trim();
+          const rawIdStr = (art.id || art.artist_id || art.name || "").toString().trim();
+          const key = rawNameStr.toLowerCase();
+          if (!key) continue;
+
+          let entry = artistMap.get(key);
+          if (!entry) {
+            entry = {
+              name: rawNameStr,
+              id: rawIdStr,
+              rawKey: key,
+              genreEntries: [],
+              genres: new Set(),
+              popularity: art.popularity ?? genre.popularity ?? 0.5,
+              song_id: art.song_id || art.spotify_track_id || art.track_id || null
+            };
+            artistMap.set(key, entry);
+          }
+
+          const indexBonus = Math.max(1, 20 - j); 
+          entry.genreEntries.push({
+            genreObj: genre,
+            index: j,
+            weight: (genre.popularity || 1) * indexBonus
+          });
+          entry.genres.add(genre.id);
+
+          if (!entry.song_id) {
+            entry.song_id = art.song_id || art.spotify_track_id || art.track_id || null;
+          }
+        }
+      }
+
+      computedArtistNodes = [];
+      let indexCounter = 0;
+
+      artistMap.forEach(data => {
+        let totalWeight = 0;
+        let x = 0;
+        let y = 0;
+
+        let bestEntry = data.genreEntries[0];
+        for (let i = 1; i < data.genreEntries.length; i++) {
+          if (data.genreEntries[i].index < bestEntry.index) {
+            bestEntry = data.genreEntries[i];
+          }
+        }
+
+        for (let i = 0; i < data.genreEntries.length; i++) {
+          const ge = data.genreEntries[i];
+          const pullFactor = (ge === bestEntry) ? 2.5 : 1.0;
+          const effectiveWeight = ge.weight * pullFactor;
+
+          x += ge.genreObj.x * effectiveWeight;
+          y += ge.genreObj.y * effectiveWeight;
+          totalWeight += effectiveWeight;
+        }
+
+        if (totalWeight > 0) {
+          x /= totalWeight;
+          y /= totalWeight;
+        }
+
+        let hash = 0;
+        for (let i = 0; i < data.rawKey.length; i++) {
+          hash = ((hash << 5) - hash + data.rawKey.charCodeAt(i)) >>> 0;
+        }
+
+        const angle = (hash % 360) * Math.PI / 180;
+        const spread = ((hash % 100) / 100) * 12;
+
+        x = (x + Math.cos(angle) * spread) * 16;
+        y = (y + Math.sin(angle) * spread) * 16;
+        if (isNaN(x)) x = 0;
+        if (isNaN(y)) y = 0;
+
+        const mainGenre = bestEntry ? bestEntry.genreObj.id : (Array.from(data.genres)[0] || "Unknown");
+        const genresArray = Array.from(data.genres);
+        const newNode = {
+          _idx: indexCounter++,
+          id: data.name,
+          internalId: data.id,
+          rawKey: data.rawKey,
+          x,
+          y,
+          popularity: data.popularity,
+          associatedGenres: genresArray,
+          sample_artist: mainGenre,
+          mainGenre: mainGenre,
+          song_id: data.song_id,
+          _type: "artist",
+          _radius: CONFIG.minNodeRadius + data.popularity * (CONFIG.maxNodeRadius - CONFIG.minNodeRadius),
+          _genreSet: data.genres
+        };
+        newNode._color = sampleNodeColor(newNode);
+
+        computedArtistNodes.push(newNode);
+
+        for (let i = 0; i < genresArray.length; i++) {
+          const g = genresArray[i];
+          let list = genreToArtistsMap.get(g);
+          if (!list) {
+            list = [];
+            genreToArtistsMap.set(g, list);
+          }
+          list.push(newNode);
+        }
+      });
+
+      computedArtistLinks = [];
+    }
+
+    function prebuildModeCaches() {
+      genreSearchIndex = new Array(rawGenreData.nodes.length);
+      for (let i = 0; i < rawGenreData.nodes.length; i++) {
+        const node = rawGenreData.nodes[i];
+        node._lowerId = (node.id || "").toLowerCase();
+        node._lowerArtists = Array.isArray(node.artists) 
+          ? node.artists.map(art => (art.name || art.id || "").toLowerCase())
+          : [];
+        
+        genreNodeMap.set(node.id, node);
+        genreNeighborsMap.set(node.id, new Set());
+        genreSearchIndex[i] = node;
+      }
+
+      for (let i = 0; i < rawGenreData.links.length; i++) {
+        const link = rawGenreData.links[i];
+        const s = typeof link.source === "object" ? link.source : genreNodeMap.get(link.source);
+        const t = typeof link.target === "object" ? link.target : genreNodeMap.get(link.target);
+
+        if (s && t) {
+          link.source = s;
+          link.target = t;
+          genreNeighborsMap.get(s.id)?.add(t.id);
+          genreNeighborsMap.get(t.id)?.add(s.id);
+        }
+      }
+      genreQuadtree = d3.quadtree().x(d => isNaN(d.x) ? 0 : d.x).y(d => isNaN(d.y) ? 0 : d.y).addAll(rawGenreData.nodes);
+
+      artistSearchIndex = new Array(computedArtistNodes.length);
+      for (let i = 0; i < computedArtistNodes.length; i++) {
+        const node = computedArtistNodes[i];
+        node._lowerId = (node.id || "").toLowerCase();
+        node._lowerArtist = (node.associatedGenres || []).join(" ").toLowerCase();
+        
+        artistNodeMap.set(node.rawKey, node);
+        artistNodeMap.set(node.id.toLowerCase(), node);
+        artistNodeMap.set(node.internalId, node);
+        artistNeighborsMap.set(node.rawKey, new Set());
+        artistSearchIndex[i] = node;
+      }
+
+      artistConnectionAdjacencyMap.clear();
+      genreToArtistsMap.forEach((artistsList) => {
+        for (let i = 0; i < artistsList.length; i++) {
+          const artA = artistsList[i];
+          let adjSet = artistConnectionAdjacencyMap.get(artA.rawKey);
+          if (!adjSet) {
+            adjSet = new Set();
+            artistConnectionAdjacencyMap.set(artA.rawKey, adjSet);
+          }
+          for (let j = 0; j < artistsList.length; j++) {
+            if (i === j) continue;
+            adjSet.add(artistsList[j].rawKey);
+          }
+        }
+      });
+
+      artistQuadtree = d3.quadtree().x(d => isNaN(d.x) ? 0 : d.x).y(d => isNaN(d.y) ? 0 : d.y).addAll(computedArtistNodes);
+    }
+
+    function setupPathfinderSearch() {
+      const fromInput = document.getElementById("path-from-input");
+      const toInput = document.getElementById("path-to-input");
+      const fromDropdown = document.getElementById("from-dropdown");
+      const toDropdown = document.getElementById("to-dropdown");
+      const findBtn = document.getElementById("find-path-btn");
+      const toggleBridgeCheckbox = document.getElementById("toggle-bridge-line");
+
+      function handleInputSearch(inputElem, dropdownElem, isSource) {
+        const query = inputElem.value.trim().toLowerCase();
+        if (!query) {
+          dropdownElem.style.display = "none";
+          if (isSource) selectedFromArtist = null;
+          else selectedToArtist = null;
+          return;
+        }
+
+        const results = [];
+        for (let i = 0; i < artistSearchIndex.length; i++) {
+          const artist = artistSearchIndex[i];
+          if (artist._lowerId.includes(query) || artist.mainGenre.toLowerCase().includes(query)) {
+            results.push(artist);
+            if (results.length >= 100) break;
+          }
+        }
+
+        dropdownElem.innerHTML = "";
+
+        if (results.length === 0) {
+          dropdownElem.style.display = "none";
+          return;
+        }
+
+        for (let i = 0; i < results.length; i++) {
+          const artist = results[i];
+          const item = document.createElement("div");
+          item.className = "search-dropdown-item";
+          item.innerHTML = `<span>${artist.id}</span> <span class="genre-tag">${artist.mainGenre}</span>`;
+          item.addEventListener("click", () => {
+            inputElem.value = artist.id;
+            dropdownElem.style.display = "none";
+            if (isSource) selectedFromArtist = artist;
+            else selectedToArtist = artist;
+          });
+          dropdownElem.appendChild(item);
+        }
+
+        dropdownElem.style.display = "block";
+      }
+
+      fromInput.addEventListener("input", () => handleInputSearch(fromInput, fromDropdown, true));
+      toInput.addEventListener("input", () => handleInputSearch(toInput, toDropdown, false));
+
+      document.addEventListener("click", (e) => {
+        if (!fromInput.contains(e.target) && !fromDropdown.contains(e.target)) fromDropdown.style.display = "none";
+        if (!toInput.contains(e.target) && !toDropdown.contains(e.target)) toDropdown.style.display = "none";
+      });
+
+      findBtn.addEventListener("click", () => {
+        if (!selectedFromArtist || !selectedToArtist) {
+          document.getElementById("path-status").innerText = "Select both artists!";
+          return;
+        }
+        computeShortestPath(selectedFromArtist, selectedToArtist);
+      });
+
+      if (toggleBridgeCheckbox) {
+        toggleBridgeCheckbox.addEventListener("change", () => {
+          requestRender();
+        });
+      }
+    }
+
+    function getCandidateArtistsRanked(selectedArtist) {
+      if (!selectedArtist) return [];
+      if (selectedArtist._cachedCandidates) return selectedArtist._cachedCandidates;
+
+      const candidateCounts = new Map();
+      const genres = selectedArtist.associatedGenres;
+
+      for (let i = 0; i < genres.length; i++) {
+        const list = genreToArtistsMap.get(genres[i]);
+        if (!list) continue;
+        for (let j = 0; j < list.length; j++) {
+          const art = list[j];
+          if (art.rawKey === selectedArtist.rawKey) continue;
+          candidateCounts.set(art, (candidateCounts.get(art) || 0) + 1);
+        }
+      }
+
+      const candidates = Array.from(candidateCounts.entries(), ([artist, score]) => ({ artist, score }));
+      candidates.sort((a, b) => b.score - a.score);
+      
+      const result = new Array(candidates.length);
+      for (let i = 0; i < candidates.length; i++) {
+        result[i] = candidates[i].artist;
+      }
+
+      selectedArtist._cachedCandidates = result;
+      return result;
+    }
+
+    function areArtistsBidirectional(artistA, artistB) {
+      const adjA = artistConnectionAdjacencyMap.get(artistA.rawKey);
+      const adjB = artistConnectionAdjacencyMap.get(artistB.rawKey);
+      if (!adjA || !adjB) return false;
+      return adjA.has(artistB.rawKey) && adjB.has(artistA.rawKey);
+    }
+
+    function getBidirectionalArtists(selectedArtist, targetCount = 60) {
+      if (!selectedArtist) return [];
+      if (selectedArtist._cachedBiNeighbors) return selectedArtist._cachedBiNeighbors;
+
+      const candidates = getCandidateArtistsRanked(selectedArtist);
+      const validMatches = [];
+
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[i];
+        if (areArtistsBidirectional(selectedArtist, candidate)) {
+          validMatches.push(candidate);
+          if (validMatches.length >= targetCount) break;
+        }
+      }
+      selectedArtist._cachedBiNeighbors = validMatches;
+      return validMatches;
+    }
+
+    function computeShortestPath(startArtist, endArtist) {
+      if (startArtist.rawKey === endArtist.rawKey) {
+        document.getElementById("path-status").innerText = "Same artist!";
+        return;
+      }
+
+      document.getElementById("path-status").innerText = "Searching...";
+
+      const forwardQueue = [startArtist];
+      const backwardQueue = [endArtist];
+
+      const forwardParent = new Map();
+      const backwardParent = new Map();
+
+      forwardParent.set(startArtist.rawKey, null);
+      backwardParent.set(endArtist.rawKey, null);
+
+      let meetingNode = null;
+
+      while (forwardQueue.length > 0 && backwardQueue.length > 0) {
+        const fCurrent = forwardQueue.shift();
+        const fNeighbors = getBidirectionalArtists(fCurrent, 100);
+        for (let i = 0; i < fNeighbors.length; i++) {
+          const neighbor = fNeighbors[i];
+          if (!forwardParent.has(neighbor.rawKey)) {
+            forwardParent.set(neighbor.rawKey, fCurrent);
+            forwardQueue.push(neighbor);
+            if (backwardParent.has(neighbor.rawKey)) {
+              meetingNode = neighbor;
+              break;
+            }
+          }
+        }
+        if (meetingNode) break;
+
+        const bCurrent = backwardQueue.shift();
+        const bNeighbors = getBidirectionalArtists(bCurrent, 100);
+        for (let i = 0; i < bNeighbors.length; i++) {
+          const neighbor = bNeighbors[i];
+          if (!backwardParent.has(neighbor.rawKey)) {
+            backwardParent.set(neighbor.rawKey, bCurrent);
+            backwardQueue.push(neighbor);
+            if (forwardParent.has(neighbor.rawKey)) {
+              meetingNode = neighbor;
+              break;
+            }
+          }
+        }
+        if (meetingNode) break;
+      }
+
+      const resultsBox = document.getElementById("path-results-box");
+      resultsBox.style.display = "block";
+      resultsBox.innerHTML = "";
+      currentPathLinks = [];
+      currentFoundPathArtists = [];
+
+      if (meetingNode) {
+        const pathFromStart = [];
+        let curr = meetingNode;
+        while (curr !== null) {
+          pathFromStart.unshift(curr);
+          curr = forwardParent.get(curr.rawKey);
+        }
+
+        const pathToEnd = [];
+        curr = backwardParent.get(meetingNode.rawKey);
+        while (curr !== null) {
+          pathToEnd.push(curr);
+          curr = backwardParent.get(curr.rawKey);
+        }
+
+        let foundPath = pathFromStart.concat(pathToEnd);
+
+        let optimized = true;
+        while (optimized) {
+          optimized = false;
+          for (let i = 0; i < foundPath.length - 2; i++) {
+            for (let j = foundPath.length - 1; j > i + 1; j--) {
+              if (areArtistsBidirectional(foundPath[i], foundPath[j])) {
+                foundPath = foundPath.slice(0, i + 1).concat(foundPath.slice(j));
+                optimized = true;
+                break;
+              }
+            }
+            if (optimized) break;
+          }
+        }
+
+        currentFoundPathArtists = foundPath;
+        document.getElementById("path-status").innerText = `Found (${foundPath.length - 1} Degrees)`;
+
+        const animateBtn = document.createElement("button");
+        animateBtn.className = "glass-btn";
+        animateBtn.style.marginBottom = "6px";
+        animateBtn.innerText = "▶ ANIMATE JOURNEY";
+        animateBtn.addEventListener("click", () => startJourneyAnimation(foundPath));
+        resultsBox.appendChild(animateBtn);
+
+        for (let i = 0; i < foundPath.length; i++) {
+          const item = document.createElement("div");
+          item.className = "path-step-item";
+          item.innerHTML = `<span>${i + 1}. ${foundPath[i].id}</span> <span style="font-size:9px; color:#777;">${foundPath[i].mainGenre}</span>`;
+          resultsBox.appendChild(item);
+
+          if (i < foundPath.length - 1) {
+            currentPathLinks.push({
+              source: foundPath[i],
+              target: foundPath[i + 1]
+            });
+          }
+        }
+
+        selectedNode = startArtist;
+        updateAccentColor(startArtist._color);
+        updateActiveSubnetwork(startArtist);
+
+        if (activeDataMode !== "artists") switchMode("artists");
+        const targetScale = 2.5;
+        const target = clampTransform(
+          d3.zoomIdentity
+            .translate(width / 2 - startArtist.x * targetScale, height / 2 - startArtist.y * targetScale)
+            .scale(targetScale)
+        );
+        transform = target;
+        targetTransform = target;
+        d3.select(canvas).call(zoomBehavior.transform, target);
+        requestRender();
+
+      } else {
+        document.getElementById("path-status").innerText = "No path";
+        resultsBox.innerHTML = `<div style="color: #ff4444; text-align: center;">No connection found.</div>`;
+      }
+    }
+
+    async function startJourneyAnimation(pathArtists) {
+      if (isAnimatingJourney || !pathArtists || pathArtists.length === 0) return;
+      isAnimatingJourney = true;
+
+      if (activeDataMode !== "artists") {
+        switchMode("artists");
+      }
+
+      for (let i = 0; i < pathArtists.length; i++) {
+        if (!isAnimatingJourney) break;
+
+        const artist = pathArtists[i];
+        selectedNode = artist;
+        updateAccentColor(artist._color);
+        updateActiveSubnetwork(artist);
+        updateDetailCard(artist);
+
+        document.getElementById("path-status").innerText = `Journey: [${i + 1}/${pathArtists.length}] ${artist.id}`;
+
+        const targetScale = 2.5;
+        const target = clampTransform(
+          d3.zoomIdentity
+            .translate(width / 2 - artist.x * targetScale, height / 2 - artist.y * targetScale)
+            .scale(targetScale)
+        );
+
+        if (i === 0) {
+          transform = target;
+          targetTransform = target;
+          d3.select(canvas).call(zoomBehavior.transform, target);
+        }
+
+        requestRender();
+
+        const trackId = getGenreTrackId(artist);
+        playTrack(trackId, true);
+
+        await new Promise(r => setTimeout(r, 1500));
+        if (!isAnimatingJourney) break;
+        await new Promise(r => setTimeout(r, 5000));
+        if (!isAnimatingJourney) break;
+
+        if (i < pathArtists.length - 1) {
+          const nextArtist = pathArtists[i + 1];
+          const nextTarget = clampTransform(
+            d3.zoomIdentity
+              .translate(width / 2 - nextArtist.x * targetScale, height / 2 - nextArtist.y * targetScale)
+              .scale(targetScale)
+          );
+
+          await new Promise((resolve) => {
+            d3.select(canvas)
+              .transition()
+              .duration(5000)
+              .ease(d3.easeCubicInOut)
+              .call(zoomBehavior.transform, nextTarget)
+              .on("end", resolve);
+          });
+        }
+      }
+
+      isAnimatingJourney = false;
+      document.getElementById("path-status").innerText = "Journey Complete!";
+    }
+
+    function checkAutoModeSwitch() {
+      if (isTransitioningMode || isAnimatingJourney || !zoomBehavior || searchQuery.length > 0) return;
+
+      const currentK = targetTransform.k;
+      const cx = width / 2;
+      const cy = height / 2;
+
+      if (activeDataMode === "genres" && currentK > CONFIG.genreToArtistThreshold) {
+        isTransitioningMode = true;
+
+        const wx = (cx - targetTransform.x) / currentK;
+        const wy = (cy - targetTransform.y) / currentK;
+
+        switchMode("artists");
+
+        const newWx = wx * 16;
+        const newWy = wy * 16;
+        const newK = currentK / 16;
+
+        const newX = cx - newWx * newK;
+        const newY = cy - newWy * newK;
+
+        const newTransform = clampTransform(d3.zoomIdentity.translate(newX, newY).scale(newK));
+        transform = newTransform;
+        targetTransform = newTransform;
+
+        d3.select(canvas).call(zoomBehavior.transform, newTransform);
+        isTransitioningMode = false;
+
+      } else if (activeDataMode === "artists" && currentK < (CONFIG.artistToGenreThreshold / 3)) {
+        isTransitioningMode = true;
+
+        const wx = (cx - targetTransform.x) / currentK;
+        const wy = (cy - targetTransform.y) / currentK;
+
+        switchMode("genres");
+
+        const newWx = wx / 16;
+        const newWy = wy / 16;
+        const newK = currentK * 16;
+
+        const newX = cx - newWx * newK;
+        const newY = cy - newWy * newK;
+
+        const newTransform = clampTransform(d3.zoomIdentity.translate(newX, newY).scale(newK));
+        transform = newTransform;
+        targetTransform = newTransform;
+
+        d3.select(canvas).call(zoomBehavior.transform, newTransform);
+        isTransitioningMode = false;
+      }
+    }
+	
+    function switchMode(mode) {
+      lastSelectedNodes[activeDataMode] = selectedNode;
+
+      activeDataMode = mode;
+      hoverNode = null;
+      currentClosestArtistsLinks = [];
+
+      if (mode === "genres") {
+        activeNodes = rawGenreData.nodes;
+        activeLinks = rawGenreData.links;
+        nodeMap = genreNodeMap;
+        neighborsMap = genreNeighborsMap;
+        quadtree = genreQuadtree;
+
+        document.getElementById("label-artist-type").innerText = "Sample Artist";
+        document.getElementById("label-links-type").innerText = "Direct Connections";
+        document.getElementById("conn-header-label").innerText = "Connected Network via Neighbors";
+      } else {
+        activeNodes = computedArtistNodes;
+        activeLinks = computedArtistLinks;
+        nodeMap = artistNodeMap;
+        neighborsMap = artistNeighborsMap;
+        quadtree = artistQuadtree;
+
+        document.getElementById("label-artist-type").innerText = "Primary Genre";
+        document.getElementById("label-links-type").innerText = "Genre Count";
+        document.getElementById("conn-header-label").innerText = "Genres Performed In";
+      }
+
+      document.getElementById("node-count").innerText = activeNodes.length;
+
+      selectedNode = lastSelectedNodes[mode] || null;
+      if (selectedNode) {
+        updateAccentColor(selectedNode._color);
+        updateActiveSubnetwork(selectedNode);
+        updateDetailCard(selectedNode);
+      } else {
+        updateActiveSubnetwork(null);
+        const detailCard = document.getElementById("detail-card");
+        if (detailCard) detailCard.style.display = "none";
+      }
+
+      evaluateSearchMatches();
+      requestRender();
+    }
+
+    function openArtistOverlay(node) {
+      if (!node || !node.artists || node.artists.length === 0) return;
+
+      const modal = document.getElementById("artist-overlay-modal");
+      const grid = document.getElementById("artist-grid");
+      document.getElementById("overlay-genre-title").innerText = `${node.id.toUpperCase()} ARTISTS`;
+
+      grid.innerHTML = "";
+      const fragment = document.createDocumentFragment();
+      for (let i = 0; i < node.artists.length; i++) {
+        const artist = node.artists[i];
+        const card = document.createElement("div");
+        card.className = "artist-card";
+        card.innerHTML = `<span>${artist.name}</span>`;
+        card.addEventListener("click", () => {
+          const trackId = artist.song_id || artist.spotify_track_id || artist.track_id;
+          playTrack(trackId, true);
+        });
+        fragment.appendChild(card);
+      }
+      grid.appendChild(fragment);
+
+      modal.style.display = "flex";
+    }
+
+    function getGenreTrackId(node) {
+      if (!node) return null;
+      if (node.sample_artist && Array.isArray(node.artists)) {
+        const targetName = node.sample_artist.trim().toLowerCase();
+        for (let i = 0; i < node.artists.length; i++) {
+          const art = node.artists[i];
+          if ((art.name || "").trim().toLowerCase() === targetName) {
+            const trackId = art.song_id || art.spotify_track_id || art.track_id;
+            if (trackId) return trackId;
+          }
+        }
+      }
+      
+      if (node.song_id) return node.song_id;
+      if (node.spotify_track_id) return node.spotify_track_id;
+      if (node.artists && node.artists.length > 0) {
+        const firstArtist = node.artists[0];
+        return firstArtist.song_id || firstArtist.spotify_track_id || firstArtist.track_id;
+      }
+      return null;
+    }
+
+    function updateArtistButtonState() {
+      const btn = document.getElementById("toggle-artists-btn");
+      if (!btn) return;
+      if (activeDataMode === "artists" || !selectedNode || !selectedNode.artists || selectedNode.artists.length === 0) {
+        btn.disabled = true;
+        return;
+      }
+      btn.disabled = false;
+    }
+
+    function updateActiveSubnetwork(node) {
+      activeDirectNeighbors.clear();
+      activeSecondaryNeighbors.clear();
+      currentClosestArtistsLinks = [];
+
+      if (!node) return;
+
+      if (activeDataMode === "artists") {
+        const biNeighbors = getBidirectionalArtists(node, 30);
+        for (let i = 0; i < biNeighbors.length; i++) {
+          const peer = biNeighbors[i];
+          activeDirectNeighbors.add(peer.rawKey);
+          currentClosestArtistsLinks.push({
+            source: node,
+            target: peer,
+            level: 1
+          });
+        }
+      } else {
+        const directSet = neighborsMap.get(node.id) || new Set();
+        directSet.forEach(id => activeDirectNeighbors.add(id));
+
+        directSet.forEach(neighborId => {
+          const secSet = neighborsMap.get(neighborId);
+          if (secSet) {
+            secSet.forEach(secId => {
+              if (secId !== node.id && !directSet.has(secId)) {
+                activeSecondaryNeighbors.add(secId);
+              }
+            });
+          }
+        });
+      }
+    }
+
+    function requestRender() {
+      if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(renderLoop);
+      }
+    }
+
+    function renderLoop() {
+      renderRequested = false;
+
+      const lerpFactor = 0.25; 
+      const dx = targetTransform.x - transform.x;
+      const dy = targetTransform.y - transform.y;
+      const dk = targetTransform.k - transform.k;
+
+      if (isNaN(dx) || isNaN(dy) || isNaN(dk)) {
+        transform = d3.zoomIdentity;
+        targetTransform = d3.zoomIdentity;
+      } else if (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01 || Math.abs(dk) > 0.0001) {
+        transform = d3.zoomIdentity
+          .translate(transform.x + dx * lerpFactor, transform.y + dy * lerpFactor)
+          .scale(transform.k + dk * lerpFactor);
+        
+        requestRender();
+      } else {
+        transform = targetTransform;
+      }
+
+      render();
+    }
+
+    function render() {
+      const now = performance.now();
+      const delta = (now - lastCalledTime) / 1000;
+      lastCalledTime = now;
+      if (delta > 0) {
+        fps = Math.round(0.9 * fps + 0.1 * (1 / delta));
+        const fpsElem = document.getElementById("fps-count");
+        if (fpsElem) fpsElem.innerText = fps;
+      }
+
+      ctx.save();
+      ctx.fillStyle = "#111111";
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.translate(transform.x, transform.y);
+      ctx.scale(transform.k, transform.k);
+
+      const activeNode = selectedNode || hoverNode;
+      const isSearching = searchQuery.length > 0;
+      const k = transform.k;
+
+      const margin = 100 / k;
+      const minX = -transform.x / k - margin;
+      const maxX = (width - transform.x) / k + margin;
+      const minY = -transform.y / k - margin;
+      const maxY = (height - transform.y) / k + margin;
+
+      if (activeDataMode === "artists") {
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        for (let i = 0; i < artistGenreHeaders.length; i++) {
+          const header = artistGenreHeaders[i];
+          if (header.x < minX || header.x > maxX || header.y < minY || header.y > maxY) continue;
+
+          const size = header.popularity || 0.5;
+          const showThreshold = 0.4 + (1 - size) * 1.5;
+          if (k < showThreshold) continue;
+
+          const fade = Math.min(1, (k - showThreshold) / 0.2);
+          const baseFontSize = Math.round(28 + size * 76);
+          ctx.font = `bold ${baseFontSize}px Consolas, monospace`;
+          ctx.fillStyle = `rgba(255, 255, 255, ${(0.04 + 0.12 * size) * fade})`;
+          ctx.fillText(header.id.toUpperCase(), header.x, header.y);
+        }
+
+        ctx.textAlign = "left";
+        ctx.textBaseline = "alphabetic";
+      }
+
+      const showBridgeLine = document.getElementById("toggle-bridge-line")?.checked ?? true;
+      if (showBridgeLine && currentPathLinks.length > 0) {
+        ctx.lineWidth = (activeDataMode === "artists" ? 3.0 : 1.5) / k;
+        
+        const bridgeColor = selectedNode && selectedNode._color ? selectedNode._color : "#33ccff";
+        ctx.strokeStyle = bridgeColor;
+
+        ctx.beginPath();
+        for (let i = 0; i < currentPathLinks.length; i++) {
+          const pl = currentPathLinks[i];
+          const scaleDiv = activeDataMode === "artists" ? 1 : 16;
+          ctx.moveTo(pl.source.x / scaleDiv, pl.source.y / scaleDiv);
+          ctx.lineTo(pl.target.x / scaleDiv, pl.target.y / scaleDiv);
+        }
+        ctx.stroke();
+      }
+
+      if (activeNode) {
+        if (activeDataMode === "artists") {
+          ctx.lineWidth = 1.0 / k;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+          ctx.beginPath();
+          for (let i = 0; i < currentClosestArtistsLinks.length; i++) {
+            const link = currentClosestArtistsLinks[i];
+            if (link.level === 2) {
+              ctx.moveTo(link.source.x, link.source.y);
+              ctx.lineTo(link.target.x, link.target.y);
+            }
+          }
+          ctx.stroke();
+
+          ctx.lineWidth = 1.5 / k;
+          for (let i = 0; i < currentClosestArtistsLinks.length; i++) {
+            const link = currentClosestArtistsLinks[i];
+            if (link.level === 1) {
+              ctx.strokeStyle = link.target._color;
+              ctx.beginPath();
+              ctx.moveTo(link.source.x, link.source.y);
+              ctx.lineTo(link.target.x, link.target.y);
+              ctx.stroke();
+            }
+          }
+        } else if (activeLinks.length > 0) {
+          ctx.lineWidth = 1.0 / k;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+          ctx.beginPath();
+          for (let i = 0; i < activeLinks.length; i++) {
+            const link = activeLinks[i];
+            const sId = link.source.id;
+            const tId = link.target.id;
+
+            const isSecondaryLink = 
+              (activeDirectNeighbors.has(sId) && (activeDirectNeighbors.has(tId) || activeSecondaryNeighbors.has(tId))) ||
+              (activeDirectNeighbors.has(tId) && (activeDirectNeighbors.has(sId) || activeSecondaryNeighbors.has(sId)));
+
+            if (isSecondaryLink && sId !== activeNode.id && tId !== activeNode.id) {
+              ctx.moveTo(link.source.x, link.source.y);
+              ctx.lineTo(link.target.x, link.target.y);
+            }
+          }
+          ctx.stroke();
+
+          ctx.lineWidth = 1.5 / k;
+          for (let i = 0; i < activeLinks.length; i++) {
+            const link = activeLinks[i];
+            const isSource = link.source.id === activeNode.id;
+            const isTarget = link.target.id === activeNode.id;
+
+            if (isSource || isTarget) {
+              const other = isSource ? link.target : link.source;
+              ctx.strokeStyle = other._color;
+              ctx.beginPath();
+              ctx.moveTo(link.source.x, link.source.y);
+              ctx.lineTo(link.target.x, link.target.y);
+              ctx.stroke();
+            }
+          }
+        }
+      }
+
+      const numNodes = activeNodes.length;
+
+      for (let i = 0; i < numNodes; i++) {
+        const node = activeNodes[i];
+        const nx = node.x;
+        const ny = node.y;
+
+        if (isNaN(nx) || isNaN(ny) || nx < minX || nx > maxX || ny < minY || ny > maxY) continue;
+
+        const checkKey = activeDataMode === "artists" ? node.rawKey : node.id;
+        const activeKey = activeDataMode === "artists" ? (activeNode ? activeNode.rawKey : null) : (activeNode ? activeNode.id : null);
+
+        const isMatch = isSearching ? node._searchMatch : true;
+        const isMainNode = activeNode && checkKey === activeKey;
+        const isDirect = activeNode && activeDirectNeighbors.has(checkKey);
+        const isSecondary = activeNode && activeSecondaryNeighbors.has(checkKey);
+
+        let r = node._radius;
+        if (isMainNode) r = CONFIG.hoverNodeRadius + 2.0;
+        else if (isDirect) r = CONFIG.hoverNodeRadius;
+        else if (isSecondary) r = Math.max(2, node._radius * 0.85);
+
+        ctx.beginPath();
+        let fillColor = node._color;
+        if (activeNode && !isMainNode && !isDirect && !isSecondary) {
+          fillColor = "rgba(255, 255, 255, 0.25)";
+        }
+        if (isSearching) {
+          fillColor = isMatch ? "#33ccff" : "rgba(255,255,255,0.15)";
+        }
+        ctx.fillStyle = fillColor;
+        ctx.arc(nx, ny, r, 0, 2 * Math.PI);
+        ctx.fill();
+
+        if (isMainNode) {
+          ctx.strokeStyle = "#ffffff";
+          ctx.lineWidth = 1.0 / k;
+          ctx.beginPath();
+          ctx.arc(nx, ny, r + 2 / k, 0, 2 * Math.PI);
+          ctx.stroke();
+        }
+
+        const pop = node.popularity || 0;
+        const requiredZoom = 0.3 + (1.0 - pop) * 6.0; 
+        const showLabel = k > requiredZoom || isMainNode || isDirect || (isSearching && isMatch);
+
+        if (showLabel) {
+          const fontSizePx = Math.max(9, Math.round(9 + pop * 3));
+          const isBold = isMainNode || isDirect;
+          ctx.font = `${isBold ? "bold " : ""}${fontSizePx}px Consolas, monospace`;
+          
+          ctx.fillStyle = (isMainNode || isDirect) ? "#ffffff" : "rgba(255, 255, 255, 0.65)";
+          ctx.fillText(node.id, nx + r + 4, ny + 3);
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function evaluateSearchMatches() {
+      const indexToScan = activeDataMode === "genres" ? genreSearchIndex : artistSearchIndex;
+      const queryText = searchQuery;
+      matchedSearchNodes = [];
+
+      for (let i = 0; i < indexToScan.length; i++) {
+        const node = indexToScan[i];
+        if (!queryText) {
+          node._searchMatch = false;
+          continue;
+        }
+
+        const nameLower = node.id.toLowerCase();
+        const artistsLower = activeDataMode === "genres" 
+          ? (node._lowerArtists || []) 
+          : [node.mainGenre.toLowerCase()];
+
+        let matchesCategory = true;
+        if (searchCategoryMode === "genres") {
+          matchesCategory = (activeDataMode === "genres");
+        } else if (searchCategoryMode === "artists") {
+          matchesCategory = (activeDataMode === "artists");
+        }
+
+        if (!matchesCategory) {
+          node._searchMatch = false;
+          continue;
+        }
+
+        let isMatch = false;
+        if (searchMatchMode === "whole") {
+          const matchesName = nameLower === queryText;
+          const matchesArtist = artistsLower.some(a => a === queryText);
+          isMatch = matchesName || matchesArtist;
+        } else {
+          const matchesName = nameLower.includes(queryText);
+          const matchesArtist = artistsLower.some(a => a.includes(queryText));
+          isMatch = matchesName || matchesArtist;
+        }
+
+        node._searchMatch = isMatch;
+        if (isMatch) {
+          matchedSearchNodes.push(node);
+        }
+      }
+
+      if (matchedSearchNodes.length > 0) {
+        if (currentSearchHitIndex < 0 || currentSearchHitIndex >= matchedSearchNodes.length) {
+          currentSearchHitIndex = 0;
+        }
+      } else {
+        currentSearchHitIndex = -1;
+      }
+
+      updateSearchCounter();
+    }
+
+    function updateSearchCounter() {
+      const counterElem = document.getElementById("search-counter");
+      if (!counterElem) return;
+      if (matchedSearchNodes.length === 0) {
+        counterElem.innerText = "0/0";
+      } else {
+        counterElem.innerText = `${currentSearchHitIndex + 1}/${matchedSearchNodes.length}`;
+      }
+    }
+
+    function jumpToCurrentSearchHit() {
+      if (matchedSearchNodes.length === 0 || currentSearchHitIndex < 0) return;
+      const targetNode = matchedSearchNodes[currentSearchHitIndex];
+      if (!targetNode) return;
+
+      const targetScale = activeDataMode === "artists" ? 2.5 : 2;
+      const target = clampTransform(
+        d3.zoomIdentity
+          .translate(width / 2 - targetNode.x * targetScale, height / 2 - targetNode.y * targetScale)
+          .scale(targetScale)
+      );
+      
+      d3.select(canvas).transition().duration(400).call(
+        zoomBehavior.transform,
+        target
+      );
+
+      selectedNode = targetNode;
+      updateAccentColor(targetNode._color);
+      updateActiveSubnetwork(targetNode);
+      updateDetailCard(targetNode);
+      updateSearchCounter();
+      requestRender();
+    }
+
+    function setupInteractions() {
+      zoomBehavior = d3.zoom()
+        .scaleExtent([0.02, 120])
+        .filter(event => !event.ctrlKey || event.type === 'wheel') 
+        .on("zoom", (event) => {
+          targetTransform = clampTransform(event.transform);
+          checkAutoModeSwitch();
+          requestRender();
+        });
+
+      d3.select(canvas).call(zoomBehavior);
+
+      const initTransform = clampTransform(
+        d3.zoomIdentity.translate(width / 2, height / 2)
+      );
+
+      d3.select(canvas).call(zoomBehavior.transform, initTransform);
+
+      let searchTimeout = null;
+      const searchBox = document.getElementById("search-box");
+      const categoryDropdown = document.getElementById("search-category-dropdown");
+      const matchDropdown = document.getElementById("search-match-dropdown");
+      const prevBtn = document.getElementById("search-prev-btn");
+      const nextBtn = document.getElementById("search-next-btn");
+
+      function triggerSearchUpdate() {
+        clearTimeout(searchTimeout);
+        searchQuery = searchBox.value.toLowerCase().trim();
+        searchCategoryMode = categoryDropdown.value;
+        searchMatchMode = matchDropdown.value;
+
+        searchTimeout = setTimeout(() => {
+          currentSearchHitIndex = -1;
+          evaluateSearchMatches();
+
+          if (!searchQuery.length) {
+            requestRender();
+            return;
+          }
+
+          if (matchedSearchNodes.length > 0) {
+            currentSearchHitIndex = 0;
+            jumpToCurrentSearchHit();
+          }
+
+          requestRender();
+        }, 50);
+      }
+
+      searchBox.addEventListener("input", triggerSearchUpdate);
+      categoryDropdown.addEventListener("change", triggerSearchUpdate);
+      matchDropdown.addEventListener("change", triggerSearchUpdate);
+
+      prevBtn.addEventListener("click", () => {
+        if (matchedSearchNodes.length === 0) return;
+        currentSearchHitIndex = (currentSearchHitIndex - 1 + matchedSearchNodes.length) % matchedSearchNodes.length;
+        jumpToCurrentSearchHit();
+      });
+
+      nextBtn.addEventListener("click", () => {
+        if (matchedSearchNodes.length === 0) return;
+        currentSearchHitIndex = (currentSearchHitIndex + 1) % matchedSearchNodes.length;
+        jumpToCurrentSearchHit();
+      });
+
+      const toggleArtistsBtn = document.getElementById("toggle-artists-btn");
+      if (toggleArtistsBtn) {
+        toggleArtistsBtn.addEventListener("click", () => {
+          if (selectedNode && activeDataMode === "genres") {
+            openArtistOverlay(selectedNode);
+          }
+        });
+      }
+
+      const closeOverlayBtn = document.getElementById("close-overlay-btn");
+      if (closeOverlayBtn) {
+        closeOverlayBtn.addEventListener("click", () => {
+          document.getElementById("artist-overlay-modal").style.display = "none";
+        });
+      }
+
+      canvas.addEventListener("mousemove", (e) => {
+        const [x, y] = getCanvasPoint(e);
+        const found = findNodeAt(x, y);
+
+        if (found !== hoverNode) {
+          hoverNode = found;
+          canvas.style.cursor = found ? "pointer" : "default";
+          
+          const currentActive = selectedNode || hoverNode;
+          updateActiveSubnetwork(currentActive);
+          
+          requestRender();
+          if (found) updateDetailCard(found);
+        }
+      });
+
+      canvas.addEventListener("click", (e) => {
+        const [x, y] = getCanvasPoint(e);
+        const found = findNodeAt(x, y);
+
+        if (found) {
+          const isSameNode = (selectedNode === found);
+          selectedNode = found;
+          lastSelectedNodes[activeDataMode] = found;
+          updateAccentColor(found._color);
+          updateActiveSubnetwork(found);
+          updateDetailCard(found);
+          
+          const trackId = getGenreTrackId(found);
+          if (isSameNode) {
+            playTrack(trackId, false); 
+          } else {
+            playTrack(trackId, true);  
+          }
+        } else {
+          selectedNode = null;
+          lastSelectedNodes[activeDataMode] = null;
+          updateArtistButtonState();
+          updateActiveSubnetwork(hoverNode);
+          if (!hoverNode) {
+            const detailCard = document.getElementById("detail-card");
+            if (detailCard) detailCard.style.display = "none";
+          }
+        }
+        requestRender();
+      });
+    }
+
+    function getCanvasPoint(e) {
+      const rect = canvas.getBoundingClientRect();
+      const clientX = e.clientX - rect.left;
+      const clientY = e.clientY - rect.top;
+
+      const k = transform.k || 1;
+      const x = (clientX - transform.x) / k;
+      const y = (clientY - transform.y) / k;
+      return [isNaN(x) ? 0 : x, isNaN(y) ? 0 : y];
+    }
+
+    function findNodeAt(x, y) {
+      if (!quadtree || isNaN(x) || isNaN(y)) return null;
+      const searchRadius = 20 / (transform.k || 1);
+      const found = quadtree.find(x, y, searchRadius);
+      if (found) {
+        const r = getNodeRadius(found) + 5 / (transform.k || 1);
+        const dx = found.x - x;
+        const dy = found.y - y;
+        if (dx * dx + dy * dy < r * r) return found;
+      }
+      return null;
+    }
+
+    function updateDetailCard(node) {
+      const card = document.getElementById("detail-card");
+      if (!card) return;
+      card.style.display = "block";
+      document.getElementById("detail-title").innerText = node.id;
+
+      const angle = Math.round((Math.atan2(node.y, node.x) * 180 / Math.PI + 360) % 360);
+      document.getElementById("detail-angle").innerText = `${isNaN(angle) ? 0 : angle}°`;
+
+      const popPct = Math.round((node.popularity || 0) * 100);
+      document.getElementById("detail-pop-pct").innerText = `${popPct}%`;
+      document.getElementById("pop-bar-fill").style.width = `${popPct}%`;
+
+      document.getElementById("detail-artist").innerText = node.sample_artist || "N/A";
+
+      const chipsContainer = document.getElementById("connections-chips");
+      chipsContainer.innerHTML = "";
+      const fragment = document.createDocumentFragment();
+
+      if (activeDataMode === "genres") {
+        const artistCount = node.artists ? node.artists.length : 0;
+        document.getElementById("artist-count").innerText = artistCount;
+        updateArtistButtonState();
+
+        const directSet = neighborsMap.get(node.id) === undefined ? new Set() : neighborsMap.get(node.id);
+        document.getElementById("detail-links").innerText = directSet.size;
+
+        const sortedNeighbors = Array.from(directSet).sort();
+        const limit = Math.min(sortedNeighbors.length, 15);
+        for (let i = 0; i < limit; i++) {
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.innerText = sortedNeighbors[i];
+          fragment.appendChild(chip);
+        }
+
+        if (sortedNeighbors.length > 15) {
+          const moreChip = document.createElement("span");
+          moreChip.className = "chip";
+          moreChip.style.color = "#777";
+          moreChip.innerText = `+${sortedNeighbors.length - 15} more`;
+          fragment.appendChild(moreChip);
+        }
+      } else {
+        document.getElementById("artist-count").innerText = "0";
+        updateArtistButtonState();
+
+        const genresList = node.associatedGenres || [];
+        document.getElementById("detail-links").innerText = genresList.length;
+
+        for (let i = 0; i < genresList.length; i++) {
+          const chip = document.createElement("span");
+          chip.className = "chip";
+          chip.innerText = genresList[i];
+          fragment.appendChild(chip);
+        }
+      }
+      chipsContainer.appendChild(fragment);
+    }
+
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+
+      const dpi = window.devicePixelRatio || 1;
+      canvas.width = width * dpi;
+      canvas.height = height * dpi;
+      ctx.scale(dpi, dpi);
+
+      requestRender();
+    }
+
+    window.onload = init;
+</script>
+</body>
+</html>
