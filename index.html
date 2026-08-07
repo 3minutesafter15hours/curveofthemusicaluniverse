@@ -13,13 +13,37 @@
   padding: 0;
 }
 
+@font-face {
+  font-family: "Gill Sans";
+  src: url("./fonts/Gill Sans Medium.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Gill Sans";
+  src: url("./fonts/Gill Sans Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 body, html {
   width: 100%;
   height: 100%;
   overflow: hidden;
   background: #111111;
-  font-family: Consolas, Monaco, "Courier New", Courier, monospace;
+  font-family: "Gill Sans", "Gill Sans MT", Calibri, sans-serif;
   color: #cccccc;
+}
+
+/* Hide stats and detail card metrics safely */
+.stats, 
+#detail-card p:has(#detail-angle),
+#detail-card p:has(#detail-pop-pct),
+.pop-bar-container {
+  display: none !important;
 }
 
 :root {
@@ -890,7 +914,7 @@ canvas {
       const loaderText = document.getElementById("loader-text");
 
 	try {
-        if (loaderText) loaderText.innerText = "DOWNLOADING & PARSING JSON...";
+        if (loaderText) loaderText.innerText = "Downloading data...";
         
         const response = await fetch("everynoise_cache.json.gz");
         
@@ -898,12 +922,12 @@ canvas {
           throw new Error("Network response was not ok.");
         }
 
-        if (loaderText) loaderText.innerText = "DECOMPRESSING GZIP...";
+        if (loaderText) loaderText.innerText = "Decompressing...";
         
         const ds = new DecompressionStream("gzip");
         const decompressedStream = response.body.pipeThrough(ds);
         
-        if (loaderText) loaderText.innerText = "PROCESSING GRAPH DATA...";
+        if (loaderText) loaderText.innerText = "Figuring out where everything goes...";
         
         rawGenreData = await new Response(decompressedStream).json();
 
@@ -943,17 +967,21 @@ canvas {
     }
 
     function processGenreData() {
-      const nodes = rawGenreData.nodes;
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i];
-        node.x = isNaN(node.x ?? node.fx) ? 0 : (node.x ?? node.fx ?? 0);
-        node.y = isNaN(node.y ?? node.fy) ? 0 : (node.y ?? node.fy ?? 0);
-        
-        node._color = sampleNodeColor(node);
-        node._radius = getNodeRadius(node);
-        node._type = "genre";
-      }
-    }
+  const nodes = rawGenreData.nodes;
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    node.x = Number(node.x ?? node.fx) || 0;
+    node.y = Number(node.y ?? node.fy) || 0;
+    
+    node._color = sampleNodeColor(node);
+    node._radius = getNodeRadius(node);
+    node._type = "genre";
+    node._lowerId = (node.id || "").toLowerCase();
+    node._lowerArtists = Array.isArray(node.artists) 
+      ? node.artists.map(art => (art.name || art.id || "").toLowerCase())
+      : [];
+  }
+}
 
     function buildArtistPositions() {
       const artistMap = new Map();
@@ -971,22 +999,22 @@ canvas {
         };
       }
 
-      for (let i = 0; i < rawGenreData.nodes.length; i++) {
+	  for (let i = 0; i < rawGenreData.nodes.length; i++) {
         const genre = rawGenreData.nodes[i];
         if (!Array.isArray(genre.artists)) continue;
 
         for (let j = 0; j < genre.artists.length; j++) {
           const art = genre.artists[j];
-          const rawNameStr = (art.name || art.id || art.artist_id || "").toString().trim();
-          const rawIdStr = (art.id || art.artist_id || art.name || "").toString().trim();
-          const key = rawNameStr.toLowerCase();
+          const rawNameStr = (art.name || "").toString().trim();
+          const uniqueIdStr = (art.artist_id || art.id || rawNameStr).toString().trim();
+          const key = uniqueIdStr.toLowerCase();
           if (!key) continue;
 
           let entry = artistMap.get(key);
           if (!entry) {
             entry = {
               name: rawNameStr,
-              id: rawIdStr,
+              id: uniqueIdStr,
               rawKey: key,
               genreEntries: [],
               genres: new Set(),
@@ -1086,21 +1114,29 @@ canvas {
         }
       });
 
-      computedArtistLinks = [];
+	computedArtistLinks = [];
+
+      for (let i = 0; i < rawGenreData.nodes.length; i++) {
+        const genre = rawGenreData.nodes[i];
+        if (genre.artists) {
+          genre.artists = genre.artists.map(art => ({
+            name: art.name || "",
+            artist_id: art.artist_id || "",
+            song_id: art.song_id || "",
+            preview_url: art.preview_url || ""
+          }));
+        }
+      }
     }
 
     function prebuildModeCaches() {
-      genreSearchIndex = new Array(rawGenreData.nodes.length);
-      for (let i = 0; i < rawGenreData.nodes.length; i++) {
-        const node = rawGenreData.nodes[i];
-        node._lowerId = (node.id || "").toLowerCase();
-        node._lowerArtists = Array.isArray(node.artists) 
-          ? node.artists.map(art => (art.name || art.id || "").toLowerCase())
-          : [];
-        
+      genreSearchIndex = rawGenreData.nodes;
+      for (let i = 0; i < genreSearchIndex.length; i++) {
+        const node = genreSearchIndex[i];
         genreNodeMap.set(node.id, node);
-        genreNeighborsMap.set(node.id, new Set());
-        genreSearchIndex[i] = node;
+        if (!genreNeighborsMap.has(node.id)) {
+          genreNeighborsMap.set(node.id, new Set());
+        }
       }
 
       for (let i = 0; i < rawGenreData.links.length; i++) {
@@ -1111,42 +1147,25 @@ canvas {
         if (s && t) {
           link.source = s;
           link.target = t;
-          genreNeighborsMap.get(s.id)?.add(t.id);
-          genreNeighborsMap.get(t.id)?.add(s.id);
+          genreNeighborsMap.get(s.id).add(t.id);
+          genreNeighborsMap.get(t.id).add(s.id);
         }
       }
-      genreQuadtree = d3.quadtree().x(d => isNaN(d.x) ? 0 : d.x).y(d => isNaN(d.y) ? 0 : d.y).addAll(rawGenreData.nodes);
+      genreQuadtree = d3.quadtree().x(d => d.x).y(d => d.y).addAll(rawGenreData.nodes);
 
-      artistSearchIndex = new Array(computedArtistNodes.length);
+      artistSearchIndex = computedArtistNodes;
       for (let i = 0; i < computedArtistNodes.length; i++) {
         const node = computedArtistNodes[i];
         node._lowerId = (node.id || "").toLowerCase();
         node._lowerArtist = (node.associatedGenres || []).join(" ").toLowerCase();
-        
+
         artistNodeMap.set(node.rawKey, node);
-        artistNodeMap.set(node.id.toLowerCase(), node);
+        artistNodeMap.set(node._lowerId, node);
         artistNodeMap.set(node.internalId, node);
         artistNeighborsMap.set(node.rawKey, new Set());
-        artistSearchIndex[i] = node;
       }
 
-      artistConnectionAdjacencyMap.clear();
-      genreToArtistsMap.forEach((artistsList) => {
-        for (let i = 0; i < artistsList.length; i++) {
-          const artA = artistsList[i];
-          let adjSet = artistConnectionAdjacencyMap.get(artA.rawKey);
-          if (!adjSet) {
-            adjSet = new Set();
-            artistConnectionAdjacencyMap.set(artA.rawKey, adjSet);
-          }
-          for (let j = 0; j < artistsList.length; j++) {
-            if (i === j) continue;
-            adjSet.add(artistsList[j].rawKey);
-          }
-        }
-      });
-
-      artistQuadtree = d3.quadtree().x(d => isNaN(d.x) ? 0 : d.x).y(d => isNaN(d.y) ? 0 : d.y).addAll(computedArtistNodes);
+      artistQuadtree = d3.quadtree().x(d => d.x).y(d => d.y).addAll(computedArtistNodes);
     }
 
     function setupPathfinderSearch() {
@@ -1224,8 +1243,6 @@ canvas {
 
     function getCandidateArtistsRanked(selectedArtist) {
       if (!selectedArtist) return [];
-      if (selectedArtist._cachedCandidates) return selectedArtist._cachedCandidates;
-
       const candidateCounts = new Map();
       const genres = selectedArtist.associatedGenres;
 
@@ -1246,22 +1263,25 @@ canvas {
       for (let i = 0; i < candidates.length; i++) {
         result[i] = candidates[i].artist;
       }
-
-      selectedArtist._cachedCandidates = result;
       return result;
     }
-
+	
     function areArtistsBidirectional(artistA, artistB) {
-      const adjA = artistConnectionAdjacencyMap.get(artistA.rawKey);
-      const adjB = artistConnectionAdjacencyMap.get(artistB.rawKey);
-      if (!adjA || !adjB) return false;
-      return adjA.has(artistB.rawKey) && adjB.has(artistA.rawKey);
+      if (!artistA || !artistB || artistA.rawKey === artistB.rawKey) return false;
+      let shared = 0;
+      const genresA = artistA.associatedGenres;
+      const genresBSet = artistB._genreSet;
+      for (let i = 0; i < genresA.length; i++) {
+        if (genresBSet.has(genresA[i])) {
+          shared++;
+          if (shared >= 2) return true;
+        }
+      }
+      return false;
     }
 
-    function getBidirectionalArtists(selectedArtist, targetCount = 60) {
+	function getBidirectionalArtists(selectedArtist, targetCount = 60) {
       if (!selectedArtist) return [];
-      if (selectedArtist._cachedBiNeighbors) return selectedArtist._cachedBiNeighbors;
-
       const candidates = getCandidateArtistsRanked(selectedArtist);
       const validMatches = [];
 
@@ -1272,7 +1292,6 @@ canvas {
           if (validMatches.length >= targetCount) break;
         }
       }
-      selectedArtist._cachedBiNeighbors = validMatches;
       return validMatches;
     }
 
@@ -1739,7 +1758,7 @@ canvas {
 
           const fade = Math.min(1, (k - showThreshold) / 0.2);
           const baseFontSize = Math.round(28 + size * 76);
-          ctx.font = `bold ${baseFontSize}px Consolas, monospace`;
+		  ctx.font = `bold ${baseFontSize}px "Gill Sans", "Gill Sans MT", Calibri, sans-serif`;
           ctx.fillStyle = `rgba(255, 255, 255, ${(0.04 + 0.12 * size) * fade})`;
           ctx.fillText(header.id.toUpperCase(), header.x, header.y);
         }
@@ -1877,7 +1896,7 @@ canvas {
         if (showLabel) {
           const fontSizePx = Math.max(9, Math.round(9 + pop * 3));
           const isBold = isMainNode || isDirect;
-          ctx.font = `${isBold ? "bold " : ""}${fontSizePx}px Consolas, monospace`;
+		  ctx.font = `${isBold ? "bold " : ""}${fontSizePx}px "Gill Sans", "Gill Sans MT", Calibri, sans-serif`;
           
           ctx.fillStyle = (isMainNode || isDirect) ? "#ffffff" : "rgba(255, 255, 255, 0.65)";
           ctx.fillText(node.id, nx + r + 4, ny + 3);
