@@ -15,7 +15,7 @@
 
 @font-face {
   font-family: "Gill Sans";
-  src: url("./fonts/Gill Sans Medium.ttf") format("truetype");
+  src: url("./fonts/Gill-Sans-Medium.otf") format("truetype");
   font-weight: 400;
   font-style: normal;
   font-display: swap;
@@ -23,7 +23,7 @@
 
 @font-face {
   font-family: "Gill Sans";
-  src: url("./fonts/Gill Sans Bold.ttf") format("truetype");
+  src: url("./fonts/Gill-Sans-Bold.otf") format("truetype");
   font-weight: 700;
   font-style: normal;
   font-display: swap;
@@ -1241,61 +1241,130 @@ canvas {
       }
     }
 
+	const candidateRankCache = new Map();
+    const bidirectionalCheckCache = new Map();
+    const neighborListCache = new Map();
+
     function getCandidateArtistsRanked(selectedArtist) {
       if (!selectedArtist) return [];
-      const candidateCounts = new Map();
-      const genres = selectedArtist.associatedGenres;
+      if (candidateRankCache.has(selectedArtist.rawKey)) {
+        return candidateRankCache.get(selectedArtist.rawKey);
+      }
+
+      const candidateMap = new Map();
+      const genres = selectedArtist.associatedGenres || [];
+      const mainGenre = selectedArtist.mainGenre;
+      const mainGenreList = genreToArtistsMap.get(mainGenre) || [];
+      const selfIdx = mainGenreList.findIndex(a => a.rawKey === selectedArtist.rawKey);
 
       for (let i = 0; i < genres.length; i++) {
-        const list = genreToArtistsMap.get(genres[i]);
+        const genre = genres[i];
+        const list = genreToArtistsMap.get(genre);
         if (!list) continue;
+        
         for (let j = 0; j < list.length; j++) {
           const art = list[j];
           if (art.rawKey === selectedArtist.rawKey) continue;
-          candidateCounts.set(art, (candidateCounts.get(art) || 0) + 1);
+          
+          let entry = candidateMap.get(art.rawKey);
+          if (!entry) {
+            entry = { artist: art, score: 0, sharedGenres: 0, bestPosition: j, mainGenreProximity: Infinity };
+            candidateMap.set(art.rawKey, entry);
+          }
+          entry.sharedGenres++;
+          
+          // Track distance inside the main genre popularity tier if applicable
+          if (genre === mainGenre && selfIdx !== -1) {
+            const dist = Math.abs(j - selfIdx);
+            if (dist < entry.mainGenreProximity) {
+              entry.mainGenreProximity = dist;
+            }
+          }
+
+          entry.score += Math.max(1, 50 - j);
+          if (j < entry.bestPosition) {
+            entry.bestPosition = j;
+          }
         }
       }
 
-      const candidates = Array.from(candidateCounts.entries(), ([artist, score]) => ({ artist, score }));
-      candidates.sort((a, b) => b.score - a.score);
+      const candidates = Array.from(candidateMap.values());
       
-      const result = new Array(candidates.length);
-      for (let i = 0; i < candidates.length; i++) {
-        result[i] = candidates[i].artist;
-      }
+      candidates.sort((a, b) => {
+        if (b.sharedGenres !== a.sharedGenres) {
+          return b.sharedGenres - a.sharedGenres;
+        }
+        // Prioritize candidates within the strict 10-person range of the main genre
+        if (a.mainGenreProximity <= 10 && b.mainGenreProximity > 10) return -1;
+        if (b.mainGenreProximity <= 10 && a.mainGenreProximity > 10) return 1;
+        
+        if (a.bestPosition !== b.bestPosition) {
+          return a.bestPosition - b.bestPosition;
+        }
+        return a.mainGenreProximity - b.mainGenreProximity;
+      });
+
+      const result = candidates.map(c => c.artist);
+      candidateRankCache.set(selectedArtist.rawKey, result);
       return result;
     }
-	
-    function areArtistsBidirectional(artistA, artistB) {
-      if (!artistA || !artistB || artistA.rawKey === artistB.rawKey) return false;
-      let shared = 0;
-      const genresA = artistA.associatedGenres;
-      const genresBSet = artistB._genreSet;
-      for (let i = 0; i < genresA.length; i++) {
-        if (genresBSet.has(genresA[i])) {
-          shared++;
-          if (shared >= 2) return true;
-        }
-      }
-      return false;
-    }
 
-	function getBidirectionalArtists(selectedArtist, targetCount = 60) {
+    function getBidirectionalArtists(selectedArtist, targetCount = 21) {
       if (!selectedArtist) return [];
+      if (neighborListCache.has(selectedArtist.rawKey)) {
+        return neighborListCache.get(selectedArtist.rawKey);
+      }
+
       const candidates = getCandidateArtistsRanked(selectedArtist);
       const validMatches = [];
+      const existingKeys = new Set();
+      existingKeys.add(selectedArtist.rawKey);
 
+      // Pass 1: Collect strict mutual/positional matches
       for (let i = 0; i < candidates.length; i++) {
         const candidate = candidates[i];
         if (areArtistsBidirectional(selectedArtist, candidate)) {
           validMatches.push(candidate);
+          existingKeys.add(candidate.rawKey);
           if (validMatches.length >= targetCount) break;
         }
       }
+
+      // Pass 2: Fallback - Group naturally from the 10-person range in their main genre if slots are unfilled
+      if (validMatches.length < targetCount) {
+        const mainGenre = selectedArtist.mainGenre;
+        const mainGenreList = genreToArtistsMap.get(mainGenre) || [];
+        const selfIdx = mainGenreList.findIndex(a => a.rawKey === selectedArtist.rawKey);
+
+        if (selfIdx !== -1) {
+          const startIdx = Math.max(0, selfIdx - 10);
+          const endIdx = Math.min(mainGenreList.length - 1, selfIdx + 10);
+
+          for (let i = startIdx; i <= endIdx; i++) {
+            const candidate = mainGenreList[i];
+            if (!existingKeys.has(candidate.rawKey)) {
+              validMatches.push(candidate);
+              existingKeys.add(candidate.rawKey);
+              if (validMatches.length >= targetCount) break;
+            }
+          }
+        }
+
+        // Absolute fallback if still under targetCount
+        for (let i = 0; i < candidates.length && validMatches.length < targetCount; i++) {
+          const candidate = candidates[i];
+          if (!existingKeys.has(candidate.rawKey)) {
+            validMatches.push(candidate);
+            existingKeys.add(candidate.rawKey);
+          }
+        }
+      }
+
+      neighborListCache.set(selectedArtist.rawKey, validMatches);
       return validMatches;
     }
-
-    function computeShortestPath(startArtist, endArtist) {
+	
+function computeShortestPath(startArtist, endArtist) {
       if (startArtist.rawKey === endArtist.rawKey) {
         document.getElementById("path-status").innerText = "Same artist!";
         return;
@@ -1303,8 +1372,12 @@ canvas {
 
       document.getElementById("path-status").innerText = "Searching...";
 
+      // Use index pointers instead of .shift() for O(1) performance
       const forwardQueue = [startArtist];
+      let forwardHead = 0;
+      
       const backwardQueue = [endArtist];
+      let backwardHead = 0;
 
       const forwardParent = new Map();
       const backwardParent = new Map();
@@ -1313,16 +1386,22 @@ canvas {
       backwardParent.set(endArtist.rawKey, null);
 
       let meetingNode = null;
+      let iterations = 0;
+      const MAX_ITERATIONS = 3000;
 
-      while (forwardQueue.length > 0 && backwardQueue.length > 0) {
-        const fCurrent = forwardQueue.shift();
-        const fNeighbors = getBidirectionalArtists(fCurrent, 100);
-        for (let i = 0; i < fNeighbors.length; i++) {
+      while (forwardHead < forwardQueue.length && backwardHead < backwardQueue.length && iterations < MAX_ITERATIONS) {
+        iterations++;
+        
+        // Forward step
+        const fCurrent = forwardQueue[forwardHead++];
+        const fNeighbors = getBidirectionalArtists(fCurrent, 21);
+        for (let i = 0, len = fNeighbors.length; i < len; i++) {
           const neighbor = fNeighbors[i];
-          if (!forwardParent.has(neighbor.rawKey)) {
-            forwardParent.set(neighbor.rawKey, fCurrent);
+          const nKey = neighbor.rawKey;
+          if (!forwardParent.has(nKey)) {
+            forwardParent.set(nKey, fCurrent);
             forwardQueue.push(neighbor);
-            if (backwardParent.has(neighbor.rawKey)) {
+            if (backwardParent.has(nKey)) {
               meetingNode = neighbor;
               break;
             }
@@ -1330,14 +1409,16 @@ canvas {
         }
         if (meetingNode) break;
 
-        const bCurrent = backwardQueue.shift();
-        const bNeighbors = getBidirectionalArtists(bCurrent, 100);
-        for (let i = 0; i < bNeighbors.length; i++) {
+        // Backward step
+        const bCurrent = backwardQueue[backwardHead++];
+        const bNeighbors = getBidirectionalArtists(bCurrent, 21);
+        for (let i = 0, len = bNeighbors.length; i < len; i++) {
           const neighbor = bNeighbors[i];
-          if (!backwardParent.has(neighbor.rawKey)) {
-            backwardParent.set(neighbor.rawKey, bCurrent);
+          const nKey = neighbor.rawKey;
+          if (!backwardParent.has(nKey)) {
+            backwardParent.set(nKey, bCurrent);
             backwardQueue.push(neighbor);
-            if (forwardParent.has(neighbor.rawKey)) {
+            if (forwardParent.has(nKey)) {
               meetingNode = neighbor;
               break;
             }
@@ -1429,6 +1510,172 @@ canvas {
         resultsBox.innerHTML = `<div style="color: #ff4444; text-align: center;">No connection found.</div>`;
       }
     }
+	
+    function areArtistsBidirectional(artistA, artistB) {
+      if (!artistA || !artistB || artistA.rawKey === artistB.rawKey) return false;
+      
+      // Strict mutual check: Both artists must rank each other within their top candidate positions 
+      // to ensure the connection is truly reciprocal and eliminate one-sided/random links.
+      const candidatesA = getCandidateArtistsRanked(artistA);
+      const candidatesB = getCandidateArtistsRanked(artistB);
+
+      const isInA = candidatesA.slice(0, 35).some(a => a.rawKey === artistB.rawKey);
+      const isInB = candidatesB.slice(0, 35).some(b => b.rawKey === artistA.rawKey);
+
+      return isInA && isInB;
+    }
+
+	function getBidirectionalArtists(selectedArtist, targetCount = 21) {
+      if (!selectedArtist) return [];
+      const candidates = getCandidateArtistsRanked(selectedArtist);
+      const validMatches = [];
+
+      // Collect strictly mutual, position-weighted connections up to the 21-person limit
+      for (let i = 0; i < candidates.length; i++) {
+        const candidate = candidates[i];
+        if (areArtistsBidirectional(selectedArtist, candidate)) {
+          validMatches.push(candidate);
+          if (validMatches.length >= targetCount) break;
+        }
+      }
+
+      return validMatches;
+    }
+	
+	    function computeShortestPath(startArtist, endArtist) {
+      if (startArtist.rawKey === endArtist.rawKey) {
+        document.getElementById("path-status").innerText = "Same artist!";
+        return;
+      }
+
+      document.getElementById("path-status").innerText = "Searching...";
+
+      const forwardQueue = [startArtist];
+      const backwardQueue = [endArtist];
+
+      const forwardParent = new Map();
+      const backwardParent = new Map();
+
+      forwardParent.set(startArtist.rawKey, null);
+      backwardParent.set(endArtist.rawKey, null);
+
+      let meetingNode = null;
+
+      while (forwardQueue.length > 0 && backwardQueue.length > 0) {
+        const fCurrent = forwardQueue.shift();
+        const fNeighbors = getBidirectionalArtists(fCurrent, 100);
+        for (let i = 0; i < fNeighbors.length; i++) {
+          const neighbor = fNeighbors[i];
+          if (!forwardParent.has(neighbor.rawKey)) {
+            forwardParent.set(neighbor.rawKey, fCurrent);
+            forwardQueue.push(neighbor);
+            if (backwardParent.has(neighbor.rawKey)) {
+              meetingNode = neighbor;
+              break;
+            }
+          }
+        }
+        if (meetingNode) break;
+
+        const bCurrent = backwardQueue.shift();
+        const bNeighbors = getBidirectionalArtists(bCurrent, 100);
+        for (let i = 0; i < bNeighbors.length; i++) {
+          const neighbor = bNeighbors[i];
+          if (!backwardParent.has(neighbor.rawKey)) {
+            backwardParent.set(neighbor.rawKey, bCurrent);
+            backwardQueue.push(neighbor);
+            if (forwardParent.has(neighbor.rawKey)) {
+              meetingNode = neighbor;
+              break;
+            }
+          }
+        }
+        if (meetingNode) break;
+      }
+
+      const resultsBox = document.getElementById("path-results-box");
+      resultsBox.style.display = "block";
+      resultsBox.innerHTML = "";
+      currentPathLinks = [];
+      currentFoundPathArtists = [];
+
+      if (meetingNode) {
+        const pathFromStart = [];
+        let curr = meetingNode;
+        while (curr !== null) {
+          pathFromStart.unshift(curr);
+          curr = forwardParent.get(curr.rawKey);
+        }
+
+        const pathToEnd = [];
+        curr = backwardParent.get(meetingNode.rawKey);
+        while (curr !== null) {
+          pathToEnd.push(curr);
+          curr = backwardParent.get(curr.rawKey);
+        }
+
+        let foundPath = pathFromStart.concat(pathToEnd);
+
+        let optimized = true;
+        while (optimized) {
+          optimized = false;
+          for (let i = 0; i < foundPath.length - 2; i++) {
+            for (let j = foundPath.length - 1; j > i + 1; j--) {
+              if (areArtistsBidirectional(foundPath[i], foundPath[j])) {
+                foundPath = foundPath.slice(0, i + 1).concat(foundPath.slice(j));
+                optimized = true;
+                break;
+              }
+            }
+            if (optimized) break;
+          }
+        }
+
+        currentFoundPathArtists = foundPath;
+        document.getElementById("path-status").innerText = `Found (${foundPath.length - 1} Degrees)`;
+
+        const animateBtn = document.createElement("button");
+        animateBtn.className = "glass-btn";
+        animateBtn.style.marginBottom = "6px";
+        animateBtn.innerText = "▶ ANIMATE JOURNEY";
+        animateBtn.addEventListener("click", () => startJourneyAnimation(foundPath));
+        resultsBox.appendChild(animateBtn);
+
+        for (let i = 0; i < foundPath.length; i++) {
+          const item = document.createElement("div");
+          item.className = "path-step-item";
+          item.innerHTML = `<span>${i + 1}. ${foundPath[i].id}</span> <span style="font-size:9px; color:#777;">${foundPath[i].mainGenre}</span>`;
+          resultsBox.appendChild(item);
+
+          if (i < foundPath.length - 1) {
+            currentPathLinks.push({
+              source: foundPath[i],
+              target: foundPath[i + 1]
+            });
+          }
+        }
+
+        selectedNode = startArtist;
+        updateAccentColor(startArtist._color);
+        updateActiveSubnetwork(startArtist);
+
+        if (activeDataMode !== "artists") switchMode("artists");
+        const targetScale = 2.5;
+        const target = clampTransform(
+          d3.zoomIdentity
+            .translate(width / 2 - startArtist.x * targetScale, height / 2 - startArtist.y * targetScale)
+            .scale(targetScale)
+        );
+        transform = target;
+        targetTransform = target;
+        d3.select(canvas).call(zoomBehavior.transform, target);
+        requestRender();
+
+      } else {
+        document.getElementById("path-status").innerText = "No path";
+        resultsBox.innerHTML = `<div style="color: #ff4444; text-align: center;">No connection found.</div>`;
+      }
+    }
 
     async function startJourneyAnimation(pathArtists) {
       if (isAnimatingJourney || !pathArtists || pathArtists.length === 0) return;
