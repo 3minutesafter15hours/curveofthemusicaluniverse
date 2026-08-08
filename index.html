@@ -716,6 +716,7 @@ canvas {
     let currentPathLinks = [];
     let currentFoundPathArtists = [];
     let isAnimatingJourney = false;
+	let isAnimatingSearch = false;
 
     let canvas, ctx, width, height, bgCanvas, bgCtx;
     
@@ -1245,7 +1246,7 @@ canvas {
     const bidirectionalCheckCache = new Map();
     const neighborListCache = new Map();
 
-    function getCandidateArtistsRanked(selectedArtist) {
+	function getCandidateArtistsRanked(selectedArtist) {
       if (!selectedArtist) return [];
       if (candidateRankCache.has(selectedArtist.rawKey)) {
         return candidateRankCache.get(selectedArtist.rawKey);
@@ -1257,6 +1258,7 @@ canvas {
       const mainGenreList = genreToArtistsMap.get(mainGenre) || [];
       const selfIdx = mainGenreList.findIndex(a => a.rawKey === selectedArtist.rawKey);
 
+      // Primary collection: Only from the artist's own associated genres
       for (let i = 0; i < genres.length; i++) {
         const genre = genres[i];
         const list = genreToArtistsMap.get(genre);
@@ -1268,20 +1270,26 @@ canvas {
           
           let entry = candidateMap.get(art.rawKey);
           if (!entry) {
-            entry = { artist: art, score: 0, sharedGenres: 0, bestPosition: j, mainGenreProximity: Infinity };
+            entry = { 
+              artist: art, 
+              sharedGenres: 0, 
+              bestPosition: j, 
+              mainGenreProximity: Infinity,
+              positionDeltaSum: 0 
+            };
             candidateMap.set(art.rawKey, entry);
           }
           entry.sharedGenres++;
           
-          // Track distance inside the main genre popularity tier if applicable
+          const posDelta = selfIdx !== -1 && genre === mainGenre ? Math.abs(j - selfIdx) : j;
+          entry.positionDeltaSum += posDelta;
+
           if (genre === mainGenre && selfIdx !== -1) {
-            const dist = Math.abs(j - selfIdx);
-            if (dist < entry.mainGenreProximity) {
-              entry.mainGenreProximity = dist;
+            if (posDelta < entry.mainGenreProximity) {
+              entry.mainGenreProximity = posDelta;
             }
           }
 
-          entry.score += Math.max(1, 50 - j);
           if (j < entry.bestPosition) {
             entry.bestPosition = j;
           }
@@ -1294,14 +1302,27 @@ canvas {
         if (b.sharedGenres !== a.sharedGenres) {
           return b.sharedGenres - a.sharedGenres;
         }
-        // Prioritize candidates within the strict 10-person range of the main genre
         if (a.mainGenreProximity <= 10 && b.mainGenreProximity > 10) return -1;
         if (b.mainGenreProximity <= 10 && a.mainGenreProximity > 10) return 1;
         
-        if (a.bestPosition !== b.bestPosition) {
-          return a.bestPosition - b.bestPosition;
+        if (a.mainGenreProximity !== b.mainGenreProximity) {
+          return a.mainGenreProximity - b.mainGenreProximity;
         }
-        return a.mainGenreProximity - b.mainGenreProximity;
+
+        // --- NEW: Reward less popular artists (lower popularity value comes first) ---
+        const popDiff = (a.artist.popularity || 0.5) - (b.artist.popularity || 0.5);
+        if (Math.abs(popDiff) > 0.15) { // Adjust threshold as needed
+          return popDiff;
+        }
+        // --------------------------------------------------------------------------
+        
+        const avgDeltaA = a.positionDeltaSum / a.sharedGenres;
+        const avgDeltaB = b.positionDeltaSum / b.sharedGenres;
+        if (avgDeltaA !== avgDeltaB) {
+          return avgDeltaA - avgDeltaB;
+        }
+
+        return a.bestPosition - b.bestPosition;
       });
 
       const result = candidates.map(c => c.artist);
@@ -1309,10 +1330,16 @@ canvas {
       return result;
     }
 
-    function getBidirectionalArtists(selectedArtist, targetCount = 21) {
+function getBidirectionalArtists(selectedArtist, targetCount = 21) {
       if (!selectedArtist) return [];
+      
+      // If a cached list is incomplete, clear it so it recalculates properly
       if (neighborListCache.has(selectedArtist.rawKey)) {
-        return neighborListCache.get(selectedArtist.rawKey);
+        const cached = neighborListCache.get(selectedArtist.rawKey);
+        if (cached.length >= targetCount) {
+          return cached;
+        }
+        neighborListCache.delete(selectedArtist.rawKey);
       }
 
       const candidates = getCandidateArtistsRanked(selectedArtist);
@@ -1320,7 +1347,7 @@ canvas {
       const existingKeys = new Set();
       existingKeys.add(selectedArtist.rawKey);
 
-      // Pass 1: Collect strict mutual/positional matches
+      // Pass 1: Collect strict mutual/positional matches within own genres
       for (let i = 0; i < candidates.length; i++) {
         const candidate = candidates[i];
         if (areArtistsBidirectional(selectedArtist, candidate)) {
@@ -1330,33 +1357,26 @@ canvas {
         }
       }
 
-      // Pass 2: Fallback - Group naturally from the 10-person range in their main genre if slots are unfilled
+      // Pass 2: Universal Mainstream Fallback (Triggers for ANY artist short on connections, 
+      // regardless of how many genres they belong to)
       if (validMatches.length < targetCount) {
         const mainGenre = selectedArtist.mainGenre;
         const mainGenreList = genreToArtistsMap.get(mainGenre) || [];
-        const selfIdx = mainGenreList.findIndex(a => a.rawKey === selectedArtist.rawKey);
-
-        if (selfIdx !== -1) {
-          const startIdx = Math.max(0, selfIdx - 10);
-          const endIdx = Math.min(mainGenreList.length - 1, selfIdx + 10);
-
-          for (let i = startIdx; i <= endIdx; i++) {
-            const candidate = mainGenreList[i];
-            if (!existingKeys.has(candidate.rawKey)) {
-              validMatches.push(candidate);
-              existingKeys.add(candidate.rawKey);
-              if (validMatches.length >= targetCount) break;
-            }
-          }
-        }
-
-        // Absolute fallback if still under targetCount
-        for (let i = 0; i < candidates.length && validMatches.length < targetCount; i++) {
-          const candidate = candidates[i];
+        for (let j = 0; j < mainGenreList.length && validMatches.length < targetCount; j++) {
+          const candidate = mainGenreList[j];
           if (!existingKeys.has(candidate.rawKey)) {
             validMatches.push(candidate);
             existingKeys.add(candidate.rawKey);
           }
+        }
+      }
+
+      // Pass 3: Ultimate Candidate Pool Fallback
+      for (let i = 0; i < candidates.length && validMatches.length < targetCount; i++) {
+        const candidate = candidates[i];
+        if (!existingKeys.has(candidate.rawKey)) {
+          validMatches.push(candidate);
+          existingKeys.add(candidate.rawKey);
         }
       }
 
@@ -1514,15 +1534,37 @@ function computeShortestPath(startArtist, endArtist) {
     function areArtistsBidirectional(artistA, artistB) {
       if (!artistA || !artistB || artistA.rawKey === artistB.rawKey) return false;
       
-      // Strict mutual check: Both artists must rank each other within their top candidate positions 
-      // to ensure the connection is truly reciprocal and eliminate one-sided/random links.
+      const cacheKey = artistA.rawKey < artistB.rawKey ? `${artistA.rawKey}_${artistB.rawKey}` : `${artistB.rawKey}_${artistA.rawKey}`;
+      if (bidirectionalCheckCache.has(cacheKey)) {
+        return bidirectionalCheckCache.get(cacheKey);
+      }
+
+      // Check if they share at least one associated genre
+      const genresA = artistA.associatedGenres || [];
+      const genresBSet = artistB._genreSet;
+      let sharedCount = 0;
+      for (let i = 0; i < genresA.length; i++) {
+        if (genresBSet.has(genresA[i])) {
+          sharedCount++;
+        }
+      }
+
+      // If they share genres, let's look at their candidate ranking positions instead of a strict mutual lock.
+      // This allows major artists to connect smoothly without requiring a rigid two-way handshake.
       const candidatesA = getCandidateArtistsRanked(artistA);
       const candidatesB = getCandidateArtistsRanked(artistB);
 
-      const isInA = candidatesA.slice(0, 35).some(a => a.rawKey === artistB.rawKey);
-      const isInB = candidatesB.slice(0, 35).some(b => b.rawKey === artistA.rawKey);
+      const rankInA = candidatesA.findIndex(a => a.rawKey === artistB.rawKey);
+      const rankInB = candidatesB.findIndex(b => b.rawKey === artistA.rawKey);
 
-      return isInA && isInB;
+      // Connected if they share genres and are reasonably close in the candidate lists (top 150),
+      // OR if they share the exact same main genre.
+      const isConnected = sharedCount > 0 && 
+        rankInA !== -1 && rankInA < 21 && 
+        rankInB !== -1 && rankInB < 21;
+
+      bidirectionalCheckCache.set(cacheKey, isConnected);
+      return isConnected;
     }
 
 	function getBidirectionalArtists(selectedArtist, targetCount = 21) {
@@ -1686,6 +1728,7 @@ function computeShortestPath(startArtist, endArtist) {
       }
 
       for (let i = 0; i < pathArtists.length; i++) {
+        // Break out immediately if interrupted
         if (!isAnimatingJourney) break;
 
         const artist = pathArtists[i];
@@ -1728,12 +1771,23 @@ function computeShortestPath(startArtist, endArtist) {
           );
 
           await new Promise((resolve) => {
-            d3.select(canvas)
+            const transition = d3.select(canvas)
               .transition()
               .duration(5000)
               .ease(d3.easeCubicInOut)
               .call(zoomBehavior.transform, nextTarget)
               .on("end", resolve);
+
+            // Allow stopping mid-transition if interrupted
+            const checkInterrupt = setInterval(() => {
+              if (!isAnimatingJourney) {
+                transition.interrupt();
+                clearInterval(checkInterrupt);
+                resolve();
+              }
+            }, 100);
+
+            transition.on("end.cleanup", () => clearInterval(checkInterrupt));
           });
         }
       }
@@ -1742,8 +1796,8 @@ function computeShortestPath(startArtist, endArtist) {
       document.getElementById("path-status").innerText = "Journey Complete!";
     }
 
-    function checkAutoModeSwitch() {
-      if (isTransitioningMode || isAnimatingJourney || !zoomBehavior || searchQuery.length > 0) return;
+	function checkAutoModeSwitch() {
+      if (isTransitioningMode || isAnimatingJourney || isAnimatingSearch || !zoomBehavior || searchQuery.length > 0) return;
 
       const currentK = targetTransform.k;
       const cx = width / 2;
@@ -1916,8 +1970,30 @@ function computeShortestPath(startArtist, endArtist) {
             level: 1
           });
         }
+
+        // Render connections between direct neighbors and their own connections (Level 2)
+        const addedSecondaryKeys = new Set();
+        for (let i = 0; i < biNeighbors.length; i++) {
+          const peer = biNeighbors[i];
+          const peerNeighbors = getBidirectionalArtists(peer, 15);
+          for (let j = 0; j < peerNeighbors.length; j++) {
+            const subPeer = peerNeighbors[j];
+            if (subPeer.rawKey !== node.rawKey && !activeDirectNeighbors.has(subPeer.rawKey)) {
+              activeSecondaryNeighbors.add(subPeer.rawKey);
+              const secKey = peer.rawKey < subPeer.rawKey ? `${peer.rawKey}_${subPeer.rawKey}` : `${subPeer.rawKey}_${peer.rawKey}`;
+              if (!addedSecondaryKeys.has(secKey)) {
+                addedSecondaryKeys.add(secKey);
+                currentClosestArtistsLinks.push({
+                  source: peer,
+                  target: subPeer,
+                  level: 2
+                });
+              }
+            }
+          }
+        }
       } else {
-        const directSet = neighborsMap.get(node.id) || new Set();
+        const directSet = neighborsMap.get(node.id) === undefined ? new Set() : neighborsMap.get(node.id);
         directSet.forEach(id => activeDirectNeighbors.add(id));
 
         directSet.forEach(neighborId => {
@@ -1932,7 +2008,7 @@ function computeShortestPath(startArtist, endArtist) {
         });
       }
     }
-
+	
     function requestRender() {
       if (!renderRequested) {
         renderRequested = true;
@@ -2225,6 +2301,8 @@ function computeShortestPath(startArtist, endArtist) {
       const targetNode = matchedSearchNodes[currentSearchHitIndex];
       if (!targetNode) return;
 
+      isAnimatingSearch = true;
+
       const targetScale = activeDataMode === "artists" ? 2.5 : 2;
       const target = clampTransform(
         d3.zoomIdentity
@@ -2232,10 +2310,13 @@ function computeShortestPath(startArtist, endArtist) {
           .scale(targetScale)
       );
       
-      d3.select(canvas).transition().duration(400).call(
-        zoomBehavior.transform,
-        target
-      );
+      d3.select(canvas)
+        .transition()
+        .duration(400)
+        .call(zoomBehavior.transform, target)
+        .on("end", () => {
+          isAnimatingSearch = false;
+        });
 
       selectedNode = targetNode;
       updateAccentColor(targetNode._color);
@@ -2270,7 +2351,12 @@ function computeShortestPath(startArtist, endArtist) {
       const prevBtn = document.getElementById("search-prev-btn");
       const nextBtn = document.getElementById("search-next-btn");
 
-      function triggerSearchUpdate() {
+	function triggerSearchUpdate() {
+        if (isAnimatingJourney) {
+          isAnimatingJourney = false;
+          document.getElementById("path-status").innerText = "Journey Interrupted";
+        }
+        
         clearTimeout(searchTimeout);
         searchQuery = searchBox.value.toLowerCase().trim();
         searchCategoryMode = categoryDropdown.value;
@@ -2343,6 +2429,11 @@ function computeShortestPath(startArtist, endArtist) {
       });
 
       canvas.addEventListener("click", (e) => {
+        if (isAnimatingJourney) {
+          isAnimatingJourney = false;
+          document.getElementById("path-status").innerText = "Journey Interrupted";
+        }
+
         const [x, y] = getCanvasPoint(e);
         const found = findNodeAt(x, y);
 
